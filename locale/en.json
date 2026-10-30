@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "title": "DC AI API",
+    "description": "Adds the dc-ai.dabeecao.org gateway as a DSH model provider with automatic reasoning levels and vision detection."
+  },
+  "_config": {
+    "apiKey": "DC AI API Key (dc_...)",
+    "baseURL": "DC AI Gateway Base URL",
+    "api": "API wire protocol",
+    "displayName": "Provider display name in DSH",
+    "apiKeyEnv": "Credential reference environment variable",
+    "refreshHours": "Hours between automatic model refreshes (0 to disable)",
+    "useModelsDev": "Automatically enrich reasoning and vision capabilities"
+  },
+  "title": "DC AI Gateway",
+  "subtitle": "High-performance AI Gateway — Automatic quota monitoring, reasoning (thinking), and vision detection.",
+  "statusOnline": "Online",
+  "statusNoKey": "No API Key",
+  "tabBilling": "Quota & Billing",
+  "tabModels": "Model Catalog",
+  "tabConfig": "Connection & API Key",
+  "btnRefresh": "Refresh",
+  "btnSync": "Sync Models",
+  "btnSave": "Save Configuration",
+  "btnSaving": "Saving...",
+  "btnTest": "Test Connection",
+  "btnTesting": "Testing...",
+  "btnSyncing": "Syncing...",
+  "btnRefreshing": "Loading...",
+  "btnRetry": "Retry",
+  "btnShow": "Show",
+  "btnHide": "Hide"
+}

@@ -1,0 +1,74 @@
+{
+  "name": "dsh-dc-ai-api",
+  "version": "1.0.0",
+  "description": "DC AI API plugin for DeepSeek Harness: provides dc-ai.dabeecao.org models with automatic reasoning (thinking) ladder, vision detection, and real-time quota/usage dashboard.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "icon": "./icon.svg",
+  "author": "dabeecao",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dabeecao/dsh-dc-ai-api.git"
+  },
+  "homepage": "https://github.com/dabeecao/dsh-dc-ai-api#readme",
+  "bugs": {
+    "url": "https://github.com/dabeecao/dsh-dc-ai-api/issues"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/catalog.js",
+    "lib/snapshot.json",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.0-rc.7"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0",
+    "@deepseek-ai/dsh": ">=0.1.0-rc.7"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dc-ai",
+    "reasoning",
+    "thinking",
+    "vision",
+    "ai-gateway"
+  ]
+}
