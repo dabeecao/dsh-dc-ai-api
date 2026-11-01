@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-30T12:14:42.663Z",
+  "generatedAt": "2026-11-01T14:26:20.961Z",
   "baseURL": "https://dc-ai.dabeecao.org",
   "modelsDevURL": "https://models.dev/api.json",
   "models": [
@@ -276,7 +276,7 @@
     {
       "id": "deepseek-v4.1-flash-1017",
       "name": "DeepSeek V4.1 Flash 1017",
-      "contextWindow": 1000000,
+      "contextWindow": 1048576,
       "maxTokens": 1048576,
       "input": [
         "text",
@@ -308,7 +308,7 @@
       "id": "deepseek-v4.1-flash",
       "name": "DeepSeek V4.1 Flash",
       "contextWindow": 1000000,
-      "maxTokens": 384000,
+      "maxTokens": 1000000,
       "input": [
         "text",
         "image"
@@ -317,35 +317,6 @@
         "off": null,
         "high": "high",
         "max": "max"
-      }
-    },
-    {
-      "id": "deepseek-v4.1-flash-uncensored",
-      "name": "DeepSeek V4.1 Flash Uncensored",
-      "contextWindow": 1048576,
-      "maxTokens": 131072,
-      "input": [
-        "text"
-      ],
-      "reasoningEfforts": {
-        "off": null,
-        "high": "high",
-        "max": "max"
-      }
-    },
-    {
-      "id": "mimo-v2.6-flash-uncensored",
-      "name": "MiMo V2.6 Flash Uncensored",
-      "contextWindow": 1048576,
-      "maxTokens": 65536,
-      "input": [
-        "text"
-      ],
-      "reasoningEfforts": {
-        "off": null,
-        "low": "low",
-        "medium": "medium",
-        "high": "high"
       }
     },
     {
@@ -365,19 +336,17 @@
       }
     },
     {
-      "id": "mimo-v2.6-flash",
-      "name": "MiMo-V2.6-Flash",
+      "id": "deepseek-v4.1-flash-uncensored",
+      "name": "DeepSeek V4.1 Flash Uncensored",
       "contextWindow": 1048576,
       "maxTokens": 131072,
       "input": [
-        "text",
-        "image"
+        "text"
       ],
       "reasoningEfforts": {
         "off": null,
-        "low": "low",
-        "medium": "medium",
-        "high": "high"
+        "high": "high",
+        "max": "max"
       }
     }
   ]

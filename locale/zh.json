@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DC AI API",
+    "description": "将 dc-ai.dabeecao.org 网关接入为 DSH 模型提供方，自动识别思考等级与视觉能力，并提供额度面板。"
+  }
+}

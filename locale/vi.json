@@ -1,33 +1,6 @@
 {
   "meta": {
     "title": "DC AI API",
-    "description": "Thêm cổng dc-ai.dabeecao.org làm nhà cung cấp model cho DSH, tự động điền mức suy luận (thinking) và nhận diện khả năng thị giác (vision) theo từng dòng model."
-  },
-  "_config": {
-    "apiKey": "Khóa API DC AI (dc_...)",
-    "baseURL": "Địa chỉ cổng API (Gateway URL)",
-    "api": "Giao thức API",
-    "displayName": "Tên hiển thị nhà cung cấp trong DSH",
-    "apiKeyEnv": "Tên biến môi trường lưu khóa API",
-    "refreshHours": "Chu kỳ tự động làm mới danh sách model (giờ, 0 để tắt)",
-    "useModelsDev": "Tự động tối ưu hóa nhận diện thinking và vision"
-  },
-  "title": "DC AI Gateway",
-  "subtitle": "Cổng dịch vụ AI cao cấp — Tự động nhận diện hạn mức, suy luận (thinking) và thị giác (vision).",
-  "statusOnline": "Trực tuyến",
-  "statusNoKey": "Chưa có key",
-  "tabBilling": "Hạn mức & Chi phí",
-  "tabModels": "Danh mục Mô hình",
-  "tabConfig": "Kết nối & Khóa API",
-  "btnRefresh": "Làm mới",
-  "btnSync": "Đồng bộ Models",
-  "btnSave": "Lưu cấu hình",
-  "btnSaving": "Đang lưu...",
-  "btnTest": "Kiểm tra kết nối",
-  "btnTesting": "Đang kiểm tra...",
-  "btnSyncing": "Đang đồng bộ...",
-  "btnRefreshing": "Đang tải...",
-  "btnRetry": "Thử lại",
-  "btnShow": "Hiện",
-  "btnHide": "Ẩn"
+    "description": "Thêm cổng dc-ai.dabeecao.org làm nhà cung cấp model cho DSH, tự động điền mức suy luận (thinking), nhận diện thị giác (vision) và bảng theo dõi hạn mức."
+  }
 }
