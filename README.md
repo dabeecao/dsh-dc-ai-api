@@ -12,19 +12,21 @@ Integrates the **DC AI Gateway** (`https://dc-ai.dabeecao.org`) into DeepSeek Ha
 
 - **One provider route** (`dc-ai`) written into `llm-pi-ai` through the settings service — no duplicate entries in the model picker.
 - **Two wire protocols, switchable from the settings page**: `openai-responses` (default) and `openai-completions`.
-- **Per-family reasoning ladder**, derived from what the gateway actually accepts:
+- **Per-family reasoning ladder**, taken from each vendor's own API reference — not from probing the gateway:
 
-  | Family | Levels |
-  | --- | --- |
-  | DeepSeek | Off / High / Max |
-  | OpenAI (GPT, o-series) | Off / Low / Medium / High / Max |
-  | Google Gemini | Off / Low / Medium / High / Max |
-  | Anthropic Claude | Off / Low / Medium / High / Max |
-  | xAI Grok | Off / Low / Medium / High |
-  | Other reasoning models (GLM, Qwen, MiMo, …) | Off / Low / Medium / High |
-  | Non-reasoning models | `reasoningEfforts: false` |
+  | Family | Levels | Source |
+  | --- | --- | --- |
+  | DeepSeek | `none` / `low` / `high` / `max` | [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion) |
+  | OpenAI (GPT, o-series) | `low` / `medium` / `high` / `xhigh` / `max` | [Reasoning guide](https://platform.openai.com/docs/guides/reasoning) |
+  | Google Gemini | per model: `low` / `medium` / `high`, plus `minimal` on Flash and Flash-Lite | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
+  | Anthropic Claude | `low` / `medium` / `high` / `xhigh` / `max` | [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) |
+  | xAI Grok | `low` / `medium` / `high` / `xhigh` | [Reasoning](https://docs.x.ai/docs/guides/reasoning) |
+  | Zhipu GLM | `none` / `high` / `max` | [Deep Thinking](https://docs.z.ai/guides/capabilities/thinking) |
+  | Qwen and unrecognised models | a single thinking level (the vendor documents a toggle, not an effort scale) | Alibaba Model Studio |
+  | Non-reasoning models | `reasoningEfforts: false` | — |
 
-  A level is offered only when the gateway accepts its spelling; `xhigh` is refused upstream with `502 upstream_unavailable` and is never offered.
+  A level appears only when the vendor documents it. `off` appears only where the vendor has a spelling that actually disables thinking (`none`); elsewhere the ladder starts at the vendor's lowest real level, because an `off` that merely omits the field would fall back to the vendor's default (thinking on) and misreport what the request does.
+
 - **Vision detection** from models.dev modalities, falling back to the gateway's own description; standalone image endpoints are filtered out of the chat catalog.
 - **Quota dashboard**: current window and daily quota with live countdowns, spendable balance, and recent-window cost history. Missing values render as `—` instead of a fabricated default.
 - **Bilingual UI** through the DSH locale service: English and Chinese ship with the bundle, Vietnamese is registered as a language pack, and the section follows **Settings → General → Language**.
@@ -97,18 +99,19 @@ Report a vulnerability through the repository's issues, or privately to the main
 
 ## Gemini and the `max` level
 
-Google's own API has no `max` thinking tier: Gemini 2.x takes a numeric `thinkingBudget`, and Gemini 3.x takes `thinkingLevel` of `low` / `medium` / `high` only — the native endpoint answers `502` for `thinkingLevel: "max"`.
+Google's API has no `max` thinking tier. Its [thinking guide](https://ai.google.dev/gemini-api/docs/thinking) publishes a per-model table:
 
-This gateway nevertheless accepts `reasoning_effort: "max"` on its Chat Completions route and translates it to a larger budget than `high`. Measured on the same prompt:
+| Model | Levels supported |
+| --- | --- |
+| `gemini-4-argon` | `low`, `medium`, `high` |
+| `gemini-3.8-flash` | `low`, `medium`, `high` |
+| `gemini-3.5-flash-lite` | `minimal`, `low`, `medium`, `high` |
+| `gemini-3.6-flash` | `minimal`, `low`, `medium`, `high` |
+| `gemini-3-pro-preview` | `low`, `high` |
 
-| Model | `high` | `max` |
-| --- | --- | --- |
-| `gemini-3.8-flash` | ~1.8k reasoning tokens | ~2.5k |
-| `gemini-4-argon` | ~1.1k | ~0.9k (within noise) |
+Gemini 2.x used a numeric `thinkingBudget`; Gemini 3.x uses `thinkingLevel`, and `thinking_level: "max"` is not part of the API. Earlier versions of this plugin offered `max` for Gemini because the gateway happened to accept the spelling on its Chat Completions route — that was a gateway quirk, not a Gemini level, and it has been removed: the ladder now stops at `high`, with `minimal` where Google documents it.
 
-So `max` is a gateway-level extension rather than a Google level: it measurably buys more thinking on some Gemini routes, so it stays in the ladder, and the ladder stops there because `xhigh` is rejected. On routes where it is indistinguishable from `high`, picking either gives the same behaviour.
-
----
+The same reasoning applies to the rest of the ladder: `xhigh` is offered for OpenAI, Claude and Grok because those vendors document it, and not for DeepSeek or GLM, which map it onto a level they already have.
 
 ## Development
 

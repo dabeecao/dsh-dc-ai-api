@@ -60,19 +60,79 @@ test('modelFamily classifies the gateway ids', () => {
   assert.equal(modelFamily({ id: 'gemini-4-argon' }), 'gemini')
   assert.equal(modelFamily({ id: 'claude-opus-5-5' }), 'claude')
   assert.equal(modelFamily({ id: 'grok-4.7' }), 'grok')
-  assert.equal(modelFamily({ id: 'glm-5.3-flash' }), 'other')
+  assert.equal(modelFamily({ id: 'glm-5.3-flash' }), 'glm')
+  assert.equal(modelFamily({ id: 'qwen3.8-flash' }), 'qwen')
+  assert.equal(modelFamily({ id: 'agnes-3.0-flash' }), 'other')
 })
 
-test('Gemini offers a max level, Grok and others stop at high', () => {
-  const gemini = resolveReasoningEfforts({ id: 'gemini-4-argon', supports_thinking: true })
-  assert.deepEqual(Object.keys(gemini), ['off', 'low', 'medium', 'high', 'max'])
-  assert.equal(gemini.off, null)
+test('Gemini uses the documented per-model levels and never offers max', () => {
+  // Google's thinking guide lists low/medium/high for Gemini 4 and 3.8.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-4-argon', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+  ])
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-3.8-flash', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+  ])
+  // The Flash-Lite line also documents `minimal`.
+  assert.deepEqual(
+    Object.keys(resolveReasoningEfforts({ id: 'gemini-3.5-flash-lite', supports_thinking: true })),
+    ['minimal', 'low', 'medium', 'high'],
+  )
+  // An undocumented Gemini id falls back to the common three.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-9-unknown', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+  ])
+})
 
-  const grok = resolveReasoningEfforts({ id: 'grok-4.7', supports_thinking: true })
-  assert.deepEqual(Object.keys(grok), ['off', 'low', 'medium', 'high'])
-
+test('every family ladder follows its vendor documentation', () => {
+  // DeepSeek: none / low / high / max, where `none` disables thinking.
   const deepseek = resolveReasoningEfforts({ id: 'deepseek-v4.1-flash', supports_thinking: true })
-  assert.deepEqual(Object.keys(deepseek), ['off', 'high', 'max'])
+  assert.deepEqual(deepseek, { off: 'none', low: 'low', high: 'high', max: 'max' })
+
+  // OpenAI: low / medium / high / xhigh / max.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gpt-6-astra', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+  ])
+
+  // Anthropic: five effort levels.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'claude-opus-5-5', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+  ])
+
+  // xAI: four levels, and thinking cannot be disabled, so there is no `off`.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'grok-4.7', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ])
+
+  // Zhipu: `none` / `high` / `max`; low and medium map onto high upstream.
+  assert.deepEqual(resolveReasoningEfforts({ id: 'glm-5.3-flash', supports_thinking: true }), {
+    off: 'none',
+    high: 'high',
+    max: 'max',
+  })
+
+  // Qwen documents only a thinking toggle, so one level is offered.
+  assert.deepEqual(resolveReasoningEfforts({ id: 'qwen3.8-flash', supports_thinking: true }), {
+    off: null,
+    high: 'high',
+  })
 
   assert.equal(resolveReasoningEfforts({ id: 'swe-2', supports_thinking: false }), false)
 })

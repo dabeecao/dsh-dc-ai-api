@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-01T14:26:20.961Z",
+  "generatedAt": "2026-11-01T14:59:42.865Z",
   "baseURL": "https://dc-ai.dabeecao.org",
   "modelsDevURL": "https://models.dev/api.json",
   "models": [
@@ -24,8 +24,6 @@
       ],
       "reasoningEfforts": {
         "off": null,
-        "low": "low",
-        "medium": "medium",
         "high": "high"
       }
     },
@@ -48,11 +46,9 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
-        "high": "high",
-        "max": "max"
+        "high": "high"
       }
     },
     {
@@ -65,11 +61,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
+        "minimal": "minimal",
         "low": "low",
         "medium": "medium",
-        "high": "high",
-        "max": "max"
+        "high": "high"
       }
     },
     {
@@ -82,10 +77,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
-        "high": "high"
+        "high": "high",
+        "xhigh": "xhigh"
       }
     },
     {
@@ -98,10 +93,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -115,10 +110,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -132,10 +127,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -149,10 +144,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -166,10 +161,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
-        "high": "high"
+        "high": "high",
+        "xhigh": "xhigh"
       }
     },
     {
@@ -183,8 +178,6 @@
       ],
       "reasoningEfforts": {
         "off": null,
-        "low": "low",
-        "medium": "medium",
         "high": "high"
       }
     },
@@ -198,11 +191,9 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
-        "high": "high",
-        "max": "max"
+        "high": "high"
       }
     },
     {
@@ -215,10 +206,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -232,10 +223,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -249,11 +240,9 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
-        "high": "high",
-        "max": "max"
+        "high": "high"
       }
     },
     {
@@ -266,10 +255,10 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
         "low": "low",
         "medium": "medium",
         "high": "high",
+        "xhigh": "xhigh",
         "max": "max"
       }
     },
@@ -277,13 +266,14 @@
       "id": "deepseek-v4.1-flash-1017",
       "name": "DeepSeek V4.1 Flash 1017",
       "contextWindow": 1048576,
-      "maxTokens": 1048576,
+      "maxTokens": 262144,
       "input": [
         "text",
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
+        "off": "none",
+        "low": "low",
         "high": "high",
         "max": "max"
       }
@@ -298,23 +288,23 @@
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
-        "low": "low",
-        "medium": "medium",
-        "high": "high"
+        "off": "none",
+        "high": "high",
+        "max": "max"
       }
     },
     {
       "id": "deepseek-v4.1-flash",
       "name": "DeepSeek V4.1 Flash",
       "contextWindow": 1000000,
-      "maxTokens": 1000000,
+      "maxTokens": 384000,
       "input": [
         "text",
         "image"
       ],
       "reasoningEfforts": {
-        "off": null,
+        "off": "none",
+        "low": "low",
         "high": "high",
         "max": "max"
       }
@@ -330,8 +320,6 @@
       ],
       "reasoningEfforts": {
         "off": null,
-        "low": "low",
-        "medium": "medium",
         "high": "high"
       }
     },
@@ -339,12 +327,13 @@
       "id": "deepseek-v4.1-flash-uncensored",
       "name": "DeepSeek V4.1 Flash Uncensored",
       "contextWindow": 1048576,
-      "maxTokens": 131072,
+      "maxTokens": 393216,
       "input": [
         "text"
       ],
       "reasoningEfforts": {
-        "off": null,
+        "off": "none",
+        "low": "low",
         "high": "high",
         "max": "max"
       }

@@ -67,3 +67,34 @@ Kiểm chứng: `npm run check` (syntax + 18 test) và một harness HTTP thật
 - Chưa có `CHANGELOG.md` / `SECURITY.md`.
 - Route HTTP vẫn là 5 endpoint riêng; chuyển hẳn sang Remote RPC sẽ bỏ được cả lớp này, nhưng cần `ctx.remote` hai phía và không còn cần thiết sau khi đã có fence.
 - `lib/client.js` vẫn là một file lớn (không build/lint); tách module là việc của bản sau.
+
+---
+
+## Phụ lục 01/11/2026 — thang suy luận lấy từ docs hãng
+
+Bản 1.1.0 đầu tiên giữ `max` cho Gemini vì đo trên proxy thấy nó tốn nhiều token
+hơn `high`. Cách đó sai về nguồn gốc: `max` không phải mức của Google, nó chỉ là
+spelling mà gateway tình cờ chấp nhận. Đã thay toàn bộ thang bằng bảng lấy từ tài
+liệu chính thức, không dùng kết quả đo proxy nữa:
+
+| Hãng | Mức (theo docs) | Nguồn |
+| --- | --- | --- |
+| DeepSeek | `none` / `low` / `high` / `max` | api-docs.deepseek.com/api/create-chat-completion |
+| OpenAI | `low` / `medium` / `high` / `xhigh` / `max` | platform.openai.com/docs/guides/reasoning |
+| Gemini | theo từng model: `low`/`medium`/`high`, thêm `minimal` ở Flash & Flash-Lite | ai.google.dev/gemini-api/docs/thinking |
+| Claude | `low` / `medium` / `high` / `xhigh` / `max` | platform.claude.com/docs/en/build-with-claude/effort |
+| Grok | `low` / `medium` / `high` / `xhigh` (không tắt được) | docs.x.ai/docs/guides/reasoning |
+| GLM | `none` / `high` / `max` | docs.z.ai/guides/capabilities/thinking |
+| Qwen / khác | một mức duy nhất (chỉ có bật/tắt) | Alibaba Model Studio |
+
+Hai quy tắc rút ra:
+
+1. **`off` chỉ xuất hiện khi hãng có spelling tắt thật** (`none`). Ở các hãng
+   không có, `off` chỉ là bỏ trống trường → rơi về mặc định của hãng (đang bật),
+   tức là UI nói "tắt" nhưng request vẫn suy luận. Vì vậy Gemini, OpenAI, Claude,
+   Grok không còn `off`.
+2. **`minimal`/`xhigh` chỉ có ở nơi docs ghi**, và Gemini phải tra theo từng model
+   vì Google công bố bảng riêng (`gemini-3-pro-preview` chỉ có `low`/`high`).
+
+Test tương ứng: `test/plugin.test.mjs` → "every family ladder follows its vendor
+documentation" và "Gemini uses the documented per-model levels and never offers max".
