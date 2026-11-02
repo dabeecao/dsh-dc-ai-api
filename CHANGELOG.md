@@ -7,6 +7,11 @@
 - First-run setup gate: until an API key is configured, the settings page
   shows one focused connect card (localized en/zh/vi) instead of a dashboard
   of offline data.
+- Submitted API keys are verified against the gateway before anything is
+  stored: an explicit credential rejection (401/403) refuses the whole write
+  with a localized message, so a wrong key can neither be saved nor open the
+  setup gate. A gateway that is merely unreachable still accepts the key, and
+  the response carries a warning.
 
 ### Optimized
 

@@ -305,6 +305,8 @@ test('a keyless test connection reports MISSING_KEY without reaching the gateway
 function stubContext(options = {}) {
   const routes = new Map()
   const effects = []
+  const credentialWrites = []
+  let credentialStore
   const ctx = {
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     fiber: { entry: { options: { id: 'dc-ai-api' } } },
@@ -323,9 +325,16 @@ function stubContext(options = {}) {
     },
     get(name) {
       if (name === 'credentials') {
+        credentialStore ??= new Map()
         return {
-          resolve: async () => (options.noKey ? undefined : { value: 'dc_test' }),
-          set: async () => {},
+          resolve: async (ref) => {
+            if (credentialStore.has(ref)) return { value: credentialStore.get(ref) }
+            return options.noKey ? undefined : { value: 'dc_test' }
+          },
+          set: async (ref, value) => {
+            credentialStore.set(ref, value)
+            credentialWrites.push({ ref, value })
+          },
         }
       }
       if (name === 'webServer') {
@@ -352,7 +361,7 @@ function stubContext(options = {}) {
       fn(ctx)
     },
   }
-  return { ctx, routes }
+  return { ctx, routes, credentialWrites }
 }
 
 /**
@@ -457,4 +466,63 @@ test('the config route rejects a malformed body and a wrong method', async () =>
 
   const wrongMethod = await callRoute(routes.get('/dc-ai-api/sync'), { method: 'GET' })
   assert.equal(wrongMethod.status, 405)
+})
+
+test('a rejected API key is verified before anything is stored', async () => {
+  const server = createServer((req, res) => {
+    res.writeHead(401, { 'content-type': 'application/json' })
+    res.end('{"error":"bad key"}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const { ctx, routes, credentialWrites } = stubContext({ noKey: true })
+    const { apply } = await import('../lib/index.js')
+    apply(ctx, {
+      baseURL: `http://127.0.0.1:${port}`,
+      allowPrivateBaseURL: true,
+      apiKeyEnv: 'DC_AI_TEST_VERIFY_KEY_XYZ',
+    })
+    const response = await callRoute(routes.get('/dc-ai-api/config'), {
+      method: 'POST',
+      body: JSON.stringify({ apiKey: 'dc_wrong' }),
+    })
+    assert.equal(response.status, 400)
+    assert.equal(JSON.parse(response.body).error, 'INVALID_KEY')
+    // The refused key must not reach the credential store, so the setup gate
+    // stays closed.
+    assert.equal(credentialWrites.length, 0)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('a working API key is stored and reported as configured', async () => {
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end('{"data":[{"id":"m1"}]}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const { ctx, routes, credentialWrites } = stubContext({ noKey: true })
+    const { apply } = await import('../lib/index.js')
+    apply(ctx, {
+      baseURL: `http://127.0.0.1:${port}`,
+      allowPrivateBaseURL: true,
+      apiKeyEnv: 'DC_AI_TEST_VERIFY_KEY_XYZ',
+    })
+    const response = await callRoute(routes.get('/dc-ai-api/config'), {
+      method: 'POST',
+      body: JSON.stringify({ apiKey: 'dc_good' }),
+    })
+    const payload = JSON.parse(response.body)
+    assert.equal(response.status, 200)
+    assert.equal(payload.ok, true)
+    assert.equal(payload.apiKeyConfigured, true)
+    assert.equal(payload.warning, undefined)
+    assert.deepEqual(credentialWrites, [{ ref: 'DC_AI_TEST_VERIFY_KEY_XYZ', value: 'dc_good' }])
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
