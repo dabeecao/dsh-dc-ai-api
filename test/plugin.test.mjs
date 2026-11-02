@@ -265,9 +265,41 @@ test('fetchEndpointModels reports a rejected credential', async () => {
   }
 })
 
+test('a keyless test connection reports MISSING_KEY without reaching the gateway', async () => {
+  let requests = 0
+  const server = createServer((req, res) => {
+    requests += 1
+    res.writeHead(401, { 'content-type': 'application/json' })
+    res.end('{"error":"bad key"}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const { ctx, routes } = stubContext({ noKey: true })
+    const { apply } = await import('../lib/index.js')
+    apply(ctx, {
+      baseURL: `http://127.0.0.1:${port}`,
+      allowPrivateBaseURL: true,
+      apiKeyEnv: 'DC_AI_TEST_MISSING_KEY_XYZ',
+    })
+    const response = await callRoute(routes.get('/dc-ai-api/test'), {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    const payload = JSON.parse(response.body)
+    assert.equal(payload.ok, false)
+    assert.equal(payload.error, 'MISSING_KEY')
+    // No unauthenticated request may leave for the gateway.
+    assert.equal(requests, 0)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 /**
  * Minimal Cordis context stub: only the services `apply()` reads.
- * @param {{ rejection?: number }} [options] - connection admission result.
+ * @param {{ rejection?: number, noKey?: boolean }} [options] - connection admission
+ *   result and credential-store behaviour.
  * @returns {object} stub context plus the captured route table.
  */
 function stubContext(options = {}) {
@@ -291,7 +323,10 @@ function stubContext(options = {}) {
     },
     get(name) {
       if (name === 'credentials') {
-        return { resolve: async () => ({ value: 'dc_test' }), set: async () => {} }
+        return {
+          resolve: async () => (options.noKey ? undefined : { value: 'dc_test' }),
+          set: async () => {},
+        }
       }
       if (name === 'webServer') {
         return {

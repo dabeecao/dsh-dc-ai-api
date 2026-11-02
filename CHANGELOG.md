@@ -4,6 +4,11 @@
 
 ### Optimized
 
+- A sync without a resolved API key no longer sends the gateway a request it
+  must refuse: it serves the bundled catalog immediately and reports the
+  missing key.
+- Test connection reports `MISSING_KEY` up front — localized on the page —
+  instead of fetching unauthenticated and failing with a credential error.
 - The models.dev index is built once per cached payload instead of on every
   sync (a WeakMap keyed by the immutable catalog object).
 - A rejected credential (401/403) stops the model-list probe immediately
