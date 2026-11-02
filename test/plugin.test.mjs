@@ -244,7 +244,9 @@ test('fetchEndpointModels tries /v1/models before the bare path', async () => {
 })
 
 test('fetchEndpointModels reports a rejected credential', async () => {
+  let requests = 0
   const server = createServer((req, res) => {
+    requests += 1
     res.writeHead(401, { 'content-type': 'application/json' })
     res.end('{"error":"bad key"}')
   })
@@ -255,6 +257,9 @@ test('fetchEndpointModels reports a rejected credential', async () => {
       fetchEndpointModels(`http://127.0.0.1:${port}`, 'k', undefined, { allowPrivate: true }),
       /rejected the credential/,
     )
+    // A rejected credential is not retried on the fallback path: the second
+    // request would be refused for the same reason.
+    assert.equal(requests, 1)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

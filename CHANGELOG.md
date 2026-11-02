@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.2 — 2026-11-02
+
+### Optimized
+
+- The models.dev index is built once per cached payload instead of on every
+  sync (a WeakMap keyed by the immutable catalog object).
+- A rejected credential (401/403) stops the model-list probe immediately
+  instead of repeating the refusal on the fallback path.
+- The bundled snapshot cache no longer memoizes a failed read; the next sync
+  retries it.
+- The settings page's one-second ticker only runs while a quota countdown is
+  actually on screen.
+- The gateway and models.dev fetches each get the full request timeout instead
+  of sharing one deadline.
+
 ## 1.2.1 — 2026-11-02
 
 ### Fixed
