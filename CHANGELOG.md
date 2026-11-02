@@ -8,10 +8,11 @@
   shows one focused connect card (localized en/zh/vi) instead of a dashboard
   of offline data.
 - Submitted API keys are verified against the gateway before anything is
-  stored: an explicit credential rejection (401/403) refuses the whole write
-  with a localized message, so a wrong key can neither be saved nor open the
-  setup gate. A gateway that is merely unreachable still accepts the key, and
-  the response carries a warning.
+  stored, and the write is refused unless the gateway accepts the key: an
+  explicit credential rejection reports `INVALID_KEY`, any other verification
+  failure (unreachable, timeout) reports `VERIFY_FAILED` — both localized on
+  the page, so a wrong key or a wrong base URL can neither be saved nor open
+  the setup gate.
 
 ### Optimized
 

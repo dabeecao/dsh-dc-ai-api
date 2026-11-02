@@ -520,9 +520,29 @@ test('a working API key is stored and reported as configured', async () => {
     assert.equal(response.status, 200)
     assert.equal(payload.ok, true)
     assert.equal(payload.apiKeyConfigured, true)
-    assert.equal(payload.warning, undefined)
     assert.deepEqual(credentialWrites, [{ ref: 'DC_AI_TEST_VERIFY_KEY_XYZ', value: 'dc_good' }])
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }
+})
+
+test('an unreachable gateway refuses the key write with VERIFY_FAILED', async () => {
+  // Port 1 is reserved and refuses connections in every test environment.
+  const { ctx, routes, credentialWrites } = stubContext({ noKey: true })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {
+    baseURL: 'http://127.0.0.1:1',
+    allowPrivateBaseURL: true,
+    apiKeyEnv: 'DC_AI_TEST_VERIFY_KEY_XYZ',
+  })
+  const response = await callRoute(routes.get('/dc-ai-api/config'), {
+    method: 'POST',
+    body: JSON.stringify({ apiKey: 'dc_any' }),
+  })
+  const payload = JSON.parse(response.body)
+  assert.equal(response.status, 400)
+  assert.equal(payload.code, 'VERIFY_FAILED')
+  assert.ok(payload.detail, 'the underlying cause must reach the page')
+  // An unverifiable key must not be stored: the user is told to check first.
+  assert.equal(credentialWrites.length, 0)
 })
