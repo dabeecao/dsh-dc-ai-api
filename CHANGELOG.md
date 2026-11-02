@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 — 2026-11-02
+
+### Fixed
+
+- A settings write issued during an HMR reload was refused with "HMR
+  transactions cannot be nested", so the provider profile silently kept the
+  previous reasoning ladder. Writes now wait for the reload transaction to
+  drain and retry, and a sync that still loses the race schedules one more
+  attempt instead of giving up.
+
 ## 1.2.0 — 2026-11-01
 
 Reasoning levels now come from each vendor's own API reference instead of from
