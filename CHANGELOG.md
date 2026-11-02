@@ -2,6 +2,12 @@
 
 ## 1.2.2 — 2026-11-02
 
+### Added
+
+- First-run setup gate: until an API key is configured, the settings page
+  shows one focused connect card (localized en/zh/vi) instead of a dashboard
+  of offline data.
+
 ### Optimized
 
 - A sync without a resolved API key no longer sends the gateway a request it
