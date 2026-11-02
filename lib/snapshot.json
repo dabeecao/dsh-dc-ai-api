@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-01T14:59:42.865Z",
+  "generatedAt": "2026-11-02T03:57:24.109Z",
   "baseURL": "https://dc-ai.dabeecao.org",
   "modelsDevURL": "https://models.dev/api.json",
   "models": [
@@ -168,20 +168,6 @@
       }
     },
     {
-      "id": "qwen3.8-flash",
-      "name": "Qwen3.8 Flash",
-      "contextWindow": 1000000,
-      "maxTokens": 131072,
-      "input": [
-        "text",
-        "image"
-      ],
-      "reasoningEfforts": {
-        "off": null,
-        "high": "high"
-      }
-    },
-    {
       "id": "gemini-3.8-flash",
       "name": "Gemini 3.8 Flash",
       "contextWindow": 1048576,
@@ -266,7 +252,7 @@
       "id": "deepseek-v4.1-flash-1017",
       "name": "DeepSeek V4.1 Flash 1017",
       "contextWindow": 1048576,
-      "maxTokens": 262144,
+      "maxTokens": 393216,
       "input": [
         "text",
         "image"
