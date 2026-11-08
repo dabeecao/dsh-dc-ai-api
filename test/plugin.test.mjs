@@ -408,7 +408,7 @@ function stubContext(options = {}) {
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     fiber: { entry: { options: { id: 'dc-ai-api' } } },
     settings: {
-      describe: () => [
+      describe: () => (options.emptyDescribe ? [] : [
         { ns: 'dc-ai-api', revision: 1, user: {}, schema: {} },
         {
           ns: 'llm-pi-ai',
@@ -416,7 +416,7 @@ function stubContext(options = {}) {
           user: { providers: { 'dc-ai': { displayName: 'DC AI', models: [] } } },
           schema: { providers: {} },
         },
-      ],
+      ]),
       mutate: async () => {},
       update: async () => {},
     },
@@ -763,4 +763,21 @@ test('the update route answers with a version comparison, not an error', async (
   } else {
     assert.equal(typeof payload.error, 'string')
   }
+})
+
+test('saving still works when describe() reports no descriptor for this entry', async () => {
+  // describe() only lists entries active at the moment it is called, so a save
+  // issued while the profile is reloading sees none. The write must go through
+  // anyway and let settings.update() resolve the entry itself, instead of
+  // failing with "the dc-ai-api settings form is not available".
+  const { ctx, routes } = stubContext({ emptyDescribe: true })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  const response = await callRoute(routes.get('/dc-ai-api/config'), {
+    method: 'POST',
+    body: JSON.stringify({ displayName: 'DC AI Renamed' }),
+  })
+  assert.equal(response.status, 200)
+  assert.equal(JSON.parse(response.body).ok, true)
 })

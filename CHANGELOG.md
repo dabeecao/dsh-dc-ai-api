@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.7 — 2026-11-08
+
+### Fixed
+
+- **Saving the settings form failed with "the dc-ai-api settings form is not
+  available".** The write required `settings.describe()` to list this plugin's
+  entry before it would write anything. `describe()` only reports entries that
+  are active at the moment it is called, so a save issued while the profile was
+  reloading — an HMR pass, or the window right after a reinstall — found no
+  descriptor and refused with a generic message. The write now reads the
+  revision on a best-effort basis and always calls `settings.update()`, which
+  resolves the entry fresh at write time and reports precisely why a write is
+  impossible (`No configurable plugin entry`, `has no volatile fields`, and so
+  on) instead of a message that hid the cause.
+
 ## 1.2.6 — 2026-11-08
 
 ### Added
