@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.8 — 2026-11-08
+
+### Fixed
+
+- **"No configurable plugin entry \"dc-ai-api\"" on every save.** Schemastery was
+  resolved at runtime with `createRequire()` probing three anchors instead of
+  being imported. That call runs while the profile is still composing, before
+  module resolution for this plugin has settled, so it threw and the plugin
+  exported no `Config` at all. An entry without `runtime.Config` is skipped by
+  `settings.describe()`, which is why the page rendered and every write failed:
+  the form itself never reached the settings service.
+
+  It is now a plain `import '@deepseek-ai/schemastery'`, the form every
+  first-party plugin uses, and the loader maps the bare specifier for us. Verified
+  against a running profile: `runtime.Config` is present and the entry appears in
+  `describe()` (27 namespaces instead of 26).
+
 ## 1.2.7 — 2026-11-08
 
 ### Fixed
