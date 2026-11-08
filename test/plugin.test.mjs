@@ -736,3 +736,31 @@ test('turning on private access lets a LAN gateway through, and only then', () =
   // The self-hosted switch must not weaken the public-host https rule.
   assert.throws(() => validateBaseURL('http://dc-ai.dabeecao.org'), /https/)
 })
+
+test('the state route reports the installed version', async () => {
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+  const payload = JSON.parse((await callRoute(routes.get('/dc-ai-api/state'))).body)
+  assert.match(payload.version, /^\d+\.\d+\.\d+/, 'the page needs a version to display')
+})
+
+test('the update route answers with a version comparison, not an error', async () => {
+  // The route reaches GitHub, so it is allowed to report `error` when the
+  // network is unavailable — but it must always answer 200 with a shape the
+  // page can render, and it must never throw.
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+  const response = await callRoute(routes.get('/dc-ai-api/update'))
+  assert.equal(response.status, 200)
+  const payload = JSON.parse(response.body)
+  assert.match(payload.current, /^\d+\.\d+\.\d+/, 'the installed version must always be reported')
+  assert.equal(payload.releases, 'https://github.com/dabeecao/dsh-dc-ai-api/releases')
+  if (payload.error === undefined) {
+    assert.match(payload.latest, /^\d+\.\d+\.\d+/)
+    assert.equal(typeof payload.outOfDate, 'boolean')
+  } else {
+    assert.equal(typeof payload.error, 'string')
+  }
+})

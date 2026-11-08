@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.6 — 2026-11-08
+
+### Added
+
+- **An update check on the settings page.** DeepSeek Harness does not track this
+  plugin's releases: the plugin manager only offers version listing and update
+  for a third-party package installed from a registry under its own name, and
+  this one is installed as `github:dabeecao/dsh-dc-ai-api`. The config tab now
+  shows the running version and a **Check for updates** button that compares it
+  with `package.json` on the default branch, then links to the releases page.
+  The check reads `raw.githubusercontent.com` rather than the GitHub REST API:
+  the API allows 60 unauthenticated requests an hour, which a settings page
+  would exhaust, while the raw endpoint is a plain CDN file with a five-minute
+  cache. The answer is cached for six hours, and a failed check reports nothing
+  rather than an error state.
+
 ## 1.2.5 — 2026-11-08
 
 ### Changed

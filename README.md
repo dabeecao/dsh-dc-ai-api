@@ -30,6 +30,7 @@ Integrates the **DC AI Gateway** (`https://dc-ai.dabeecao.org`) into DeepSeek Ha
 - **Vision detection** from models.dev modalities, falling back to the gateway's own description; standalone image endpoints are filtered out of the chat catalog.
 - **Quota dashboard**: current window and daily quota with live countdowns, spendable balance, and recent-window cost history. Missing values render as `—` instead of a fabricated default.
 - **Bilingual UI** through the DSH locale service: English and Chinese ship with the bundle, Vietnamese is registered as a language pack, and the section follows **Settings → General → Language**.
+- **Update check**: this plugin ships from GitHub, not npm, and DeepSeek Harness only tracks registry packages — so the settings page carries its own check against the published manifest and links to the releases page.
 - **Offline snapshot fallback**: a bundled catalog keeps every model selectable before the API key is configured or while the gateway is unreachable. The page shows whether the catalog is live or the snapshot.
 
 ---
@@ -45,6 +46,13 @@ dsh plugin --profile web add https://github.com/dabeecao/dsh-dc-ai-api.git
 ```
 
 Restart DSH (or let HMR reload the profile) afterwards.
+
+Because the plugin is installed from a git address, DeepSeek Harness's own
+update check does not cover it: the plugin manager only offers `List versions`
+and `Update` for packages installed from a registry under their own name. Use
+**Settings → DC AI API → Connection & API Key → Check for updates**, which
+compares the running version with `package.json` on the default branch.
+Reinstall with the same `dsh plugin add github:...` command to apply an update.
 
 **Requirements**
 
@@ -90,7 +98,7 @@ The API key is written to the **DSH credential store** under `apiKeyEnv`; it is 
 
 ## Security model
 
-The five HTTP routes the page uses (`/dc-ai-api/state|billing|config|sync|test`) are **not public**:
+The six HTTP routes the page uses (`/dc-ai-api/state|billing|config|sync|test|update`) are **not public**:
 
 - every request passes `ctx.connection.requestRejection()`, the same Host/Origin fence and signed-session check that guards `/api` — an unauthenticated browser gets `401`, a cross-site origin gets `403`;
 - no `Access-Control-Allow-Origin` header is emitted, and responses are `Cache-Control: no-store`;
