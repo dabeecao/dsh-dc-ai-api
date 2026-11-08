@@ -5,7 +5,7 @@
  * been stored, or during a network outage).
  *
  * Usage:
- *   DC_AI_API_KEY=dc_... node scripts/build-snapshot.mjs [baseURL] [modelsDevURL]
+ *   DC_AI_API_KEY=dc_... node scripts/build-snapshot.mjs [baseURL]
  *
  * The generated file is checked in so a fresh install can serve a complete
  * model list without network access.
@@ -18,7 +18,7 @@ import {
 } from '../lib/catalog.js'
 
 const baseURL = process.argv[2] ?? process.env.DC_AI_BASE_URL ?? 'https://dc-ai.dabeecao.org'
-const modelsDevURL = process.argv[3] ?? 'https://models.dev/api.json'
+const MODELS_DEV_URL = 'https://models.dev/api.json'
 const apiKey = process.env.DC_AI_API_KEY
 
 if (!apiKey) {
@@ -29,15 +29,14 @@ if (!apiKey) {
 console.error(`fetching ${baseURL}/models ...`)
 const endpointModels = await fetchEndpointModels(baseURL, apiKey)
 
-console.error(`fetching ${modelsDevURL} ...`)
-const catalog = await fetchModelsDev(modelsDevURL)
+console.error(`fetching ${MODELS_DEV_URL} ...`)
+const catalog = await fetchModelsDev(MODELS_DEV_URL)
 
 const models = resolveModels(endpointModels, catalog)
 const snapshot = {
   schema: 1,
   generatedAt: new Date().toISOString(),
   baseURL,
-  modelsDevURL,
   models,
 }
 

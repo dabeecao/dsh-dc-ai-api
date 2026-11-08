@@ -1,5 +1,110 @@
 # Changelog
 
+## 1.2.5 — 2026-11-08
+
+### Changed
+
+- **The address check was simplified back to a convenience guard.** The previous
+  release grew it into an allowlist with a full IPv6 parser, NAT64/6to4/Teredo
+  decoding and a documented DNS-rebinding gap. That was the wrong frame: the
+  person who sets `baseURL` is the person who installed the plugin and owns the
+  machine, so there is no trust boundary to defend — they are *allowed* to reach
+  their own gateway, which is what `allowPrivateBaseURL` is for. The check now
+  covers loopback, RFC 1918 and link-local literals (including IPv4-mapped IPv6)
+  and stops there. User-visible behaviour is unchanged; roughly 60 lines, a
+  parser and a dozen tests are gone.
+
+- **`allowPrivateBaseURL` is now a switch on the settings page** instead of a
+  config-file-only field. A user who self-hosts the gateway on localhost or a
+  LAN address could previously only enable it by editing `cordis.patch.yml` or
+  calling the route by hand — while the error message told them to enable it.
+  The error now names the switch and where to find it.
+- **`modelsDevURL` is no longer configurable.** Whether to consult models.dev is
+  the `useModelsDev` switch; where it lives is not a user decision. The URL is a
+  constant, and it never accepts a private target even when
+  `allowPrivateBaseURL` is on: the catalog is a public resource, so the switch
+  that exists to reach your own gateway must not widen a second SSRF path.
+- The two switches are exposed on **Connection & API Key** and reported by
+  `/state`, so the page reflects the stored configuration instead of assuming.
+
+## 1.2.4 — 2026-11-07
+
+### Security
+
+- **The base-URL filter let IPv4-mapped IPv6 addresses through.** `isPrivateIPv6`
+  only matched the dotted-quad spelling (`::ffff:127.0.0.1`), but the WHATWG URL
+  parser canonicalizes that to `::ffff:7f00:1` before the value reaches the
+  filter, so the check was dead code: `https://[::ffff:127.0.0.1]/`,
+  `https://[::ffff:a9fe:a9fe]/` (cloud metadata) and the whole RFC 1918 range in
+  that form were accepted without `allowPrivateBaseURL`. Both spellings are now
+  decoded.
+- **The address filter is now an allowlist.** The previous version enumerated
+  forbidden ranges, so every review found another spelling that slipped through
+  (`::ffff:7f00:1`, then `::7f00:1`, NAT64, 6to4, `fe8::1`, ...). An IP literal
+  is now accepted only when it is globally routable: IPv4 outside every
+  special-purpose block, IPv6 inside `2000::/3`. Anything unenumerated is
+  refused by default, and IPv6 literals are decoded to their eight groups
+  instead of being matched as text, so equivalent spellings cannot diverge.
+- **Three more IPv6 forms carrying an IPv4 address were also accepted:** the
+  deprecated IPv4-compatible spelling (`::127.0.0.1` → `::7f00:1`), the NAT64
+  well-known prefix (`64:ff9b::7f00:1`, RFC 6052) and 6to4 (`2002:7f00:1::`,
+  RFC 3056) all reach 127.0.0.1 and are now decoded to their IPv4 target and
+  judged by the IPv4 policy.
+- **Compressed IPv6 forms defeated the range checks.** `fe8::1` (the same
+  address as `fe80::1`) slipped past a link-local regex that required four hex
+  digits, and the same held for the `f[cd]`, `fe[c-f]` and `ff` prefixes. Those
+  matchers now accept the compressed form, and documentation space
+  (`2001:db8::/32`) and the discard-only prefix (`100::/64`) are refused too.
+- **`modelsDevURL` bypassed the URL policy entirely.** `fetchModelsDev` called
+  the bare `fetch()` while every other request went through `safeFetch`, so
+  pointing the settings field at `http://169.254.169.254/…` made the plugin fetch
+  it — an SSRF vector independent of `baseURL`, with no redirect revalidation.
+  It now goes through the same policy and hop-by-hop redirect check.
+
+### Fixed
+
+- A `200` response carrying an HTML error page surfaced as
+  `SyntaxError: Unexpected token '<'`. Responses are now parsed through a helper
+  that reports which endpoint answered with a non-JSON body.
+- An empty (but syntactically valid) models.dev payload — `{}` or `[]` — was
+  cached for the full six-hour TTL and silently stripped every model of its
+  capabilities. A payload with no provider models is now rejected, keeping the
+  previous good copy.
+- The refresh button reported "Refreshed" even when every request failed: both
+  helpers swallowed their own errors, so `Promise.all` never rejected and the
+  success notice was set unconditionally. Success is now driven by their real
+  outcome, and a success notice never renders next to an error banner.
+- A missing quota rendered as `0%` used and "reset in 0m" instead of "—",
+  contradicting the module's own rule that no value is fabricated. An unknown
+  percentage now draws an undetermined bar, and an unknown reset time shows "—".
+- The source badge hard-coded "—"; it now uses the `status.never` string that
+  was already translated in all three languages.
+- The settings tablist lacked `aria-controls`/`aria-labelledby` and arrow-key
+  navigation, which the ARIA Authoring Practices require for a tablist.
+
+## 1.2.3 — 2026-11-07
+
+### Fixed
+
+- The settings page could report **"Last error: no API key resolved for
+  DC_AI_API_KEY"** immediately after a key was successfully saved and accepted
+  by the gateway. Two independent causes:
+  - a missing key was recorded as a *sync error*, so the keyless startup sync
+    that runs before the key is picked up raised a red banner that contradicted
+    the "online" badge and the setup gate. A missing key is now a state
+    (`reason: 'no-key'`), never an error, and `getState()` never reports an
+    error recorded while no key resolved;
+  - `POST /dc-ai-api/sync` overwrote the state's `lastError` with `null`
+    whenever the sync returned without an `error` field — which is every
+    successful sync that had nothing to write. A genuine snapshot-fallback
+    error was therefore erased on the second sync, and the banner flickered.
+    The route now only adds an error for a sync that failed outright.
+- Saving a key waited for the credential store to read the value back before
+  the settings reload could start a sync, so the reload no longer races the
+  write and sees an empty store.
+- A no-op sync (signature already matching) now records the catalog outcome
+  instead of leaving the previous sync's error in place.
+
 ## 1.2.2 — 2026-11-02
 
 ### Added

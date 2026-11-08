@@ -14,6 +14,7 @@ import {
   detectThinking,
   detectVision,
   fetchEndpointModels,
+  fetchModelsDev,
   isImageModel,
   isPrivateHost,
   modelFamily,
@@ -193,7 +194,18 @@ test('preserveCompat keeps human-tuned per-model switches', () => {
 })
 
 test('isPrivateHost covers loopback, RFC1918, link-local, and IPv6', () => {
-  for (const host of ['localhost', '127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '[::1]', 'fd00::1', 'metadata.google.internal']) {
+  for (const host of [
+    'localhost',
+    '127.0.0.1',
+    '10.1.2.3',
+    '172.16.0.1',
+    '192.168.1.1',
+    '169.254.169.254',
+    '[::1]',
+    'fd00::1',
+    'fe80::1',
+    'metadata.google.internal',
+  ]) {
     assert.equal(isPrivateHost(host), true, host)
   }
   for (const host of ['dc-ai.dabeecao.org', '8.8.8.8', '1.1.1.1', '[2001:4860:4860::8888]']) {
@@ -208,14 +220,99 @@ test('validateBaseURL refuses unsafe targets and normalizes the rest', () => {
   assert.throws(() => validateBaseURL('http://dc-ai.dabeecao.org'), /https/)
   assert.throws(() => validateBaseURL('file:///etc/passwd'), /http or https/)
   assert.throws(() => validateBaseURL('https://user:pass@dc-ai.dabeecao.org'), /credentials/)
-  assert.throws(() => validateBaseURL('https://127.0.0.1:8080'), /loopback or private/)
-  assert.throws(() => validateBaseURL('https://169.254.169.254'), /loopback or private/)
+  assert.throws(() => validateBaseURL('https://127.0.0.1:8080'), /private or loopback/)
+  assert.throws(() => validateBaseURL('https://169.254.169.254'), /private or loopback/)
   assert.throws(() => validateBaseURL('not a url'), /valid absolute URL/)
 
   assert.equal(
     validateBaseURL('http://127.0.0.1:8080/v1', { allowPrivate: true }),
     'http://127.0.0.1:8080/v1',
   )
+})
+
+test('an IPv4-mapped IPv6 literal is judged as the IPv4 address it carries', () => {
+  // The URL parser rewrites `::ffff:127.0.0.1` to `::ffff:7f00:1`, so the hex
+  // form is the one that actually arrives.
+  for (const url of ['https://[::ffff:127.0.0.1]/', 'https://[::ffff:c0a8:101]/', 'https://[::ffff:a9fe:a9fe]/']) {
+    assert.throws(() => validateBaseURL(url), /private or loopback/, url)
+  }
+  // A mapped public address is not private.
+  assert.equal(isPrivateHost('[::ffff:808:808]'), false)
+})
+
+test('a public gateway on any scheme-valid host is accepted', () => {
+  for (const url of ['https://[2001:4860:4860::8888]/', 'https://8.8.8.8/', 'https://gateway.example/']) {
+    assert.equal(validateBaseURL(url), url.replace(/\/$/, ''))
+  }
+})
+
+test('unparsable IP literals are treated as private, not public', () => {
+  assert.equal(isPrivateHost(''), true)
+})
+
+test('turning on private access lets a LAN gateway through, and only then', () => {
+  const lan = 'http://192.168.1.50:8080/v1'
+  assert.throws(() => validateBaseURL(lan), /private or loopback/)
+  assert.equal(validateBaseURL(lan, { allowPrivate: true }), lan)
+  // The self-hosted switch must not weaken the public-host https rule.
+  assert.throws(() => validateBaseURL('http://dc-ai.dabeecao.org'), /https/)
+})
+
+
+test('fetchModelsDev refuses private targets even when the gateway setting allows them', async () => {
+  // The catalog URL is a fixed public resource. `allowPrivateBaseURL` exists so
+  // a user can reach their own gateway; it must not widen this into a second
+  // SSRF path, so the function takes no policy at all.
+  await assert.rejects(
+    fetchModelsDev('http://169.254.169.254/latest/meta-data/', undefined),
+    /private or loopback/,
+  )
+  await assert.rejects(fetchModelsDev('https://[::ffff:127.0.0.1]/', undefined), /private or loopback/)
+  await assert.rejects(fetchModelsDev('file:///etc/passwd', undefined), /http or https/)
+  // No third argument can loosen it.
+  assert.equal(fetchModelsDev.length, 2, 'fetchModelsDev must not accept a policy argument')
+})
+
+test('fetchModelsDev refuses a loopback catalog even when a key is configured', async () => {
+  // A local test server is exactly the shape an attacker would point the
+  // catalog at, so the function must refuse it rather than fetch it. The
+  // "unusable catalog" guard is covered separately by isUsableCatalog below.
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end('{}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  let requests = 0
+  server.on('request', () => {
+    requests += 1
+  })
+  try {
+    await assert.rejects(
+      fetchModelsDev(`http://127.0.0.1:${port}/api.json`, undefined),
+      /private or loopback/,
+    )
+    assert.equal(requests, 0, 'no request may leave for a private catalog address')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('a non-JSON gateway body reports the endpoint instead of a SyntaxError', async () => {
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' })
+    res.end('<!doctype html><h1>gateway error</h1>')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    await assert.rejects(
+      fetchEndpointModels(`http://127.0.0.1:${port}`, 'k', undefined, { allowPrivate: true }),
+      /non-JSON body.*text\/html/,
+    )
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('fetchEndpointModels tries /v1/models before the bare path', async () => {
@@ -450,7 +547,7 @@ test('an admitted request reaches the handler and rejects a bad baseURL', async 
     body: JSON.stringify({ baseURL: 'https://127.0.0.1:9000' }),
   })
   assert.equal(bad.status, 500)
-  assert.match(JSON.parse(bad.body).error, /loopback or private/)
+  assert.match(JSON.parse(bad.body).error, /private or loopback/)
 })
 
 test('the config route rejects a malformed body and a wrong method', async () => {
@@ -545,4 +642,97 @@ test('an unreachable gateway refuses the key write with VERIFY_FAILED', async ()
   assert.ok(payload.detail, 'the underlying cause must reach the page')
   // An unverifiable key must not be stored: the user is told to check first.
   assert.equal(credentialWrites.length, 0)
+})
+
+test('a keyless sync reports no error — a missing key is a state, not a failure', async () => {
+  const { ctx, routes } = stubContext({ noKey: true })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, { apiKeyEnv: 'DC_AI_TEST_NO_KEY_STATE_XYZ' })
+
+  // The startup sync runs on a timer; drive one explicitly instead.
+  const synced = await callRoute(routes.get('/dc-ai-api/sync'), { method: 'POST', body: '{}' })
+  const syncPayload = JSON.parse(synced.body)
+  assert.equal(syncPayload.apiKeyConfigured, false)
+  assert.equal(syncPayload.lastError, null, 'a keyless sync must not raise lastError')
+  // The bundled snapshot still supplies a full catalog.
+  assert.ok(syncPayload.modelsCount > 0, 'the snapshot must keep models selectable')
+  assert.equal(syncPayload.lastSource, 'snapshot')
+
+  const state = JSON.parse((await callRoute(routes.get('/dc-ai-api/state'))).body)
+  assert.equal(state.lastError, null)
+})
+
+test('a key stored after a keyless sync clears the stale missing-key error', async () => {
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end('{"data":[{"id":"m1"}]}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const { ctx, routes } = stubContext({ noKey: true })
+    const { apply } = await import('../lib/index.js')
+    apply(ctx, {
+      baseURL: `http://127.0.0.1:${port}`,
+      allowPrivateBaseURL: true,
+      apiKeyEnv: 'DC_AI_TEST_VERIFY_KEY_XYZ',
+    })
+
+    // Keyless first: the page shows the setup gate and no red banner.
+    await callRoute(routes.get('/dc-ai-api/sync'), { method: 'POST', body: '{}' })
+    assert.equal(JSON.parse((await callRoute(routes.get('/dc-ai-api/state'))).body).lastError, null)
+
+    // Saving the key must leave the page consistent: configured, and no error
+    // claiming the key is missing.
+    const saved = await callRoute(routes.get('/dc-ai-api/config'), {
+      method: 'POST',
+      body: JSON.stringify({ apiKey: 'dc_good' }),
+    })
+    const payload = JSON.parse(saved.body)
+    assert.equal(payload.apiKeyConfigured, true)
+    assert.equal(payload.lastError, null, 'a configured key must never be reported as missing')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('a real snapshot fallback still reports its error', async () => {
+  // A key is present but the gateway is unreachable: that IS a failure and the
+  // page must keep surfacing it.
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, { baseURL: 'http://127.0.0.1:1', allowPrivateBaseURL: true, requestTimeoutMs: 1500 })
+
+  const synced = await callRoute(routes.get('/dc-ai-api/sync'), { method: 'POST', body: '{}' })
+  const payload = JSON.parse(synced.body)
+  assert.equal(payload.apiKeyConfigured, true)
+  assert.ok(payload.lastError, 'an unreachable gateway with a key present must be reported')
+  assert.equal(payload.lastSource, 'snapshot')
+})
+
+test('the config route persists both switches and reports them back', async () => {
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  const before = JSON.parse((await callRoute(routes.get('/dc-ai-api/state'))).body)
+  assert.equal(before.allowPrivateBaseURL, false, 'private access is off by default')
+  assert.equal(before.useModelsDev, true, 'models.dev enrichment is on by default')
+
+  const saved = await callRoute(routes.get('/dc-ai-api/config'), {
+    method: 'POST',
+    body: JSON.stringify({ allowPrivateBaseURL: true, useModelsDev: false }),
+  })
+  const payload = JSON.parse(saved.body)
+  assert.equal(saved.status, 200)
+  assert.equal(payload.allowPrivateBaseURL, true)
+  assert.equal(payload.useModelsDev, false)
+})
+
+test('turning on private access lets a LAN gateway through, and only then', () => {
+  const lan = 'http://192.168.1.50:8080/v1'
+  assert.throws(() => validateBaseURL(lan), /private or loopback/)
+  assert.equal(validateBaseURL(lan, { allowPrivate: true }), lan)
+  // The self-hosted switch must not weaken the public-host https rule.
+  assert.throws(() => validateBaseURL('http://dc-ai.dabeecao.org'), /https/)
 })

@@ -61,6 +61,11 @@ Open **Settings → DC AI API**:
 2. **Quota & Billing** — window and daily quota, balance, recent activity.
 3. **Model Catalog** — every published model with its context window, output cap, thinking levels, and vision support.
 
+The config tab also carries two switches: **Allow a private gateway address**
+(turn it on only when you self-host the gateway on localhost or your own
+network) and **Enrich capabilities from models.dev** (on refines reasoning and
+vision data from the public catalog; off uses the gateway metadata alone).
+
 The API key is written to the **DSH credential store** under `apiKeyEnv`; it is never stored in `cordis.patch.yml`. You can also export the same variable in the environment, or store it through **Settings → Models**.
 
 ### Fields in `cordis.patch.yml`
@@ -73,12 +78,11 @@ The API key is written to the **DSH credential store** under `apiKeyEnv`; it is 
 | `apiKeyEnv` | `DC_AI_API_KEY` | Credential reference resolved per request. |
 | `syncOnStart` | `true` | Refresh the catalog on startup. |
 | `refreshHours` | `6` | Hours between refreshes (`0` disables). |
-| `useModelsDev` | `true` | Enrich capabilities from models.dev. |
-| `modelsDevURL` | `https://models.dev/api.json` | Capability catalog (cached 6 h, revalidated with `If-None-Match`). |
+| `useModelsDev` | `true` | Enrich capabilities from models.dev; off uses the gateway metadata alone. The catalog URL itself is fixed. |
 | `includeModels` | `[]` | Publish only these ids (empty = all). |
 | `excludeModels` | `[]` | Never publish these ids. |
 | `requestTimeoutMs` | `30000` | Gateway request timeout. |
-| `allowPrivateBaseURL` | `false` | Permit a loopback/private gateway address. |
+| `allowPrivateBaseURL` | `false` | Permit a loopback/private gateway address. Toggle it in **Settings → DC AI API → Connection & API Key**. |
 
 `route` is fixed to `dc-ai`: the plugin owns that one route and removes the legacy `dc-ai-chat` / `dc-ai-responses` entries.
 
@@ -90,8 +94,16 @@ The five HTTP routes the page uses (`/dc-ai-api/state|billing|config|sync|test`)
 
 - every request passes `ctx.connection.requestRejection()`, the same Host/Origin fence and signed-session check that guards `/api` — an unauthenticated browser gets `401`, a cross-site origin gets `403`;
 - no `Access-Control-Allow-Origin` header is emitted, and responses are `Cache-Control: no-store`;
-- `baseURL` is validated before any request: `http(s)` only, no embedded credentials, `https` for public hosts, and loopback / RFC 1918 / link-local / IPv6 unique-local targets are refused unless `allowPrivateBaseURL` is enabled. Redirects are revalidated hop by hop;
+- `baseURL` is validated before any request: `http(s)` only, no embedded credentials, `https` for public hosts, and a loopback or private literal is refused unless `allowPrivateBaseURL` is enabled (the switch in **Connection & API Key**). The models.dev catalog URL is a fixed constant and never accepts a private address. Redirects are revalidated hop by hop;
 - the API key never leaves the Host: the page only learns whether a key is configured, and under which reference.
+
+**Scope of the address check.** It is a convenience guard, not a security
+boundary. Whoever sets `baseURL` installed the plugin and owns the machine, so
+they are allowed to point it at their own gateway — that is what
+`allowPrivateBaseURL` is for. The check exists to stop an accidental address
+from silently reaching something local, and it stays deliberately simple:
+literals only, no DNS resolution. A hostname that resolves to a private address
+is not detected, and is not meant to be.
 
 Report a vulnerability through the repository's issues, or privately to the maintainer for anything exploitable.
 
