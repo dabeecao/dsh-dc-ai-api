@@ -1,5 +1,113 @@
 # Changelog
 
+## 1.3.1 — 2026-11-13
+
+### Fixed
+
+- **`gemini-4-hydrogen` was missing its `xhigh` thinking level.** The per-model
+  Gemini table listed argon, which documents `low`/`medium`/`high`, but not
+  hydrogen — released later, and the one Gemini 4 model with a fourth level.
+  An unlisted id fell back to the common three, so the deepest level hydrogen
+  offers could not be selected on any protocol.
+
+  The gateway was measured to confirm the siblings really do not have it, and
+  that hydrogen really does:
+
+  | Model | `minimal` | `low` | `medium` | `high` | `xhigh` |
+  | --- | --- | --- | --- | --- | --- |
+  | `gemini-4-argon` | ✗ 502 | ✓ | ✓ | ✓ | ✗ 502 |
+  | `gemini-4-hydrogen` | ✗ 502 | ✓ | ✓ | ✓ | ✓ |
+  | `gemini-4-carbon` | ✗ 502 | ✓ | ✓ | ✓ | ✗ 502 |
+
+  An unsupported `thinkingLevel` comes back as `502 — all active upstream
+  providers failed`, which reads like an outage rather than a bad request, so
+  offering `xhigh` on argon or carbon would make a healthy model look broken.
+  Hydrogen's ladder is therefore declared explicitly, and the fallback for an
+  unlisted Gemini id stays the universally accepted three.
+
+### Changed
+
+- **`xhigh` is dropped, not relabelled, when a wire format cannot spell it.**
+  Google's protocol accepts only `minimal`/`low`/`medium`/`high` and pi-ai
+  throws at request time on anything else, so a vendor level the endpoint has
+  no spelling for is removed from that protocol's ladder — provided a
+  neighbouring level already covers it. Hydrogen consequently advertises four
+  levels on `openai-responses`, `openai-completions` and `anthropic-messages`,
+  and three on `google-generative-ai`. Clamping to `high` remains only as the
+  last resort, when dropping would leave a model with no reasoning at all.
+
+  The choice is order-independent: `high` wins over `xhigh` because its name is
+  the Google spelling, whichever one is declared first.
+
+- Verified live that `xhigh` reaches hydrogen on the three wires that carry
+  effort as a request field — `xhigh` produced 226 thinking tokens where `high`
+  produced none on `/v1/responses`, and 147 on `/v1/chat/completions`.
+
+## 1.3.0 — 2026-11-13
+
+### Added
+
+- **Anthropic Messages and Google Gemini wire protocols.** The route already
+  offered the two OpenAI formats, but the gateway also serves each vendor's own
+  API from the same host, and a model can behave differently depending on which
+  one carries it. `api` now accepts `anthropic-messages` (`/v1/messages`,
+  `x-api-key`) and `google-generative-ai`
+  (`/v1beta/models/<id>:streamGenerateContent`, `x-goog-api-key`), and the
+  settings page renders a card per protocol from the list the Host reports
+  rather than hard-coding two.
+
+  Four things had to become protocol-aware beyond the path:
+
+  - **Endpoint root.** Each SDK appends its own version segment and they
+    disagree. Anthropic's always adds `/v1`, so a `/v1` root would request
+    `/v1/v1/messages`; Google's appends only `/models/<id>`, so `/v1beta`
+  belongs in the root. `resolveRouteBaseURL()` derives the right form from the
+  one address the user typed, and is idempotent so re-switching never stacks a
+  prefix.
+  - **Auth header.** `x-api-key` and `x-goog-api-key` replace the bearer token
+  on their own endpoints, and Anthropic's listing also needs
+  `anthropic-version`. The wrong header reads as a rejected credential rather
+  than a wrong request.
+  - **Listing shape.** Gemini identifies a model by `name: "models/<id>"` and
+  never sets `id`, so reading the catalog through that endpoint would otherwise
+  yield no usable ids at all.
+  - **Thinking vocabulary.** Gemini accepts only
+  `minimal`/`low`/`medium`/`high`, and pi-ai throws at request time on anything
+  else. On that protocol `xhigh` and `max` now collapse onto `high` — the
+  nearest accepted level — instead of being advertised and then failing.
+
+- **Compat switches are filtered per protocol on write and on switch.** The
+  host refuses a per-model `compat` field its protocol does not declare, so a
+  block preserved from a previous protocol (a `chatTemplateKwargs` from
+  Completions, say) would have turned "switch to Anthropic" into a failed
+  settings write. Preserved blocks are now filtered against the target
+  protocol, and `google-generative-ai` — which pi-ai gives no compat type —
+  carries none.
+
+### Changed
+
+- **The connection test probes the selected protocol**, and reports the
+  endpoint it used. A key valid on one native endpoint need not be valid on
+  another, and the button's job is to answer "does *this* protocol reach the
+  gateway".
+- **`npm run snapshot` checks every protocol agrees** before writing. The
+  snapshot describes models, not a protocol, so one listing is enough — but
+  only if all four report the same set. A disagreement is now a warning naming
+  the ids, instead of a catalog that silently omits models for one install.
+- Bundled snapshot refreshed: 23 chat models from a 31-model gateway listing.
+
+### Verified
+
+- Unit tests cover the endpoint derivation (including idempotence), each native
+  listing shape and auth header, the Gemini ladder clamping, and the per-protocol
+  compat filter — 51 tests total.
+- Live verification streamed one request through **all four protocols** for
+  Claude, Gemini, GPT, DeepSeek, GLM and Grok at every level each ladder
+  advertises. Every combination of protocol and model completed except the
+  gateway's own translation gaps (DeepSeek and GLM on the Gemini wire format,
+  and `max` on Claude through the OpenAI wires), which are upstream
+  limitations rather than plugin ones.
+
 ## 1.2.8 — 2026-11-08
 
 ### Fixed

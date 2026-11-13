@@ -63,6 +63,26 @@ Kiểm chứng: `npm run check` (syntax + 18 test) và một harness HTTP thật
 
 ## Còn mở (không chặn release)
 
+- **`xhigh` trên giao thức `google-generative-ai` — chờ upstream, không phải việc
+  của plugin.** `gemini-4-hydrogen` là model Gemini 4 duy nhất gateway chấp nhận
+  `thinkingLevel: XHIGH` (đo 13/11/2026: argon và carbon trả 502). Trên ba giao
+  thức OpenAI/Anthropic thì `xhigh` đi được, nên ladder giữ mức đó; trên giao thức
+  Google thì `adaptReasoningEfforts()` lọc bỏ vì hai tầng dưới đều chưa hỗ trợ:
+  1. `@earendil-works/pi-ai@1.5.2` — `toGoogleThinkingLevel()` chỉ map
+     `minimal/low/medium/high`, và `resolveGoogleThinkingLevel()` **throw**
+     `Unsupported Google thinking level mapping` với `xhigh`.
+  2. `@google/genai@2.21.0` — enum `ThinkingLevel` chỉ có
+     `THINKING_LEVEL_UNSPECIFIED`/`MINIMAL`/`LOW`/`MEDIUM`/`HIGH`, **không có
+     `XHIGH`**. Tầng này chặn cứng: sửa pi-ai thôi vẫn không gửi được.
+
+  Khi cả hai lên bản mới, chỉ cần thêm `'xhigh'` vào `GOOGLE_THINKING_LEVELS`
+  trong `lib/catalog.js` (một dòng) và bỏ nhánh lọc trong `adaptReasoningEfforts`.
+  Kiểm chứng lại bằng cách gửi `thinkingLevel: XHIGH` qua pi-ai, không phải chỉ
+  nhìn enum.
+
+  Ghi chú phụ: pi-ai cũng chưa có `gemini-4-hydrogen` trong `GOOGLE_MODELS`, nên
+  model này hiện chỉ chạy được vì plugin tự khai báo qua config `llm-pi-ai`.
+
 - Chưa có CI (`.github/workflows`) — nên thêm `npm run check` + refresh snapshot định kỳ.
 - Chưa có `CHANGELOG.md` / `SECURITY.md`.
 - Route HTTP vẫn là 5 endpoint riêng; chuyển hẳn sang Remote RPC sẽ bỏ được cả lớp này, nhưng cần `ctx.remote` hai phía và không còn cần thiết sau khi đã có fence.

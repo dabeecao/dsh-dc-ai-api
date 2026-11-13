@@ -11,14 +11,23 @@ Integrates the **DC AI Gateway** (`https://dc-ai.dabeecao.org`) into DeepSeek Ha
 ## Features
 
 - **One provider route** (`dc-ai`) written into `llm-pi-ai` through the settings service — no duplicate entries in the model picker.
-- **Two wire protocols, switchable from the settings page**: `openai-responses` (default) and `openai-completions`.
+- **Four wire protocols, switchable from the settings page** — the gateway serves each vendor's own API from the same host, so the choice is per install:
+
+  | Protocol | Endpoint the client calls | Auth | Notes |
+  | --- | --- | --- | --- |
+  | `openai-responses` (default) | `/responses` | `authorization: Bearer` | Keeps reasoning state across turns. |
+  | `openai-completions` | `/chat/completions` | `authorization: Bearer` | Widest third-party model compatibility. |
+  | `anthropic-messages` | `/v1/messages` | `x-api-key` | Native thinking blocks, `tool_use`, prompt caching. |
+  | `google-generative-ai` | `/v1beta/models/<id>:…` | `x-goog-api-key` | Native roles, `functionCall` parts, `thinkingConfig`. |
+
+  The protocol changes three things beyond the path, and each is derived rather than asked for: the endpoint root (each SDK appends its own version segment), the auth header, and the thinking vocabulary (Gemini accepts only `minimal`/`low`/`medium`/`high`, so `xhigh`/`max` collapse onto `high` there instead of failing mid-request). Compat switches a protocol does not declare are dropped on switch, because `llm-pi-ai` refuses a per-model field its protocol does not take — switching would otherwise be a failed settings write rather than a working route.
 - **Per-family reasoning ladder**, taken from each vendor's own API reference — not from probing the gateway:
 
   | Family | Levels | Source |
   | --- | --- | --- |
   | DeepSeek | `none` / `low` / `high` / `max` | [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion) |
   | OpenAI (GPT, o-series) | `low` / `medium` / `high` / `xhigh` / `max` | [Reasoning guide](https://platform.openai.com/docs/guides/reasoning) |
-  | Google Gemini | per model: `low` / `medium` / `high`, plus `minimal` on Flash and Flash-Lite | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
+  | Google Gemini | per model: `low` / `medium` / `high`, plus `minimal` on Flash and Flash-Lite, plus `xhigh` on Hydrogen only | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
   | Anthropic Claude | `low` / `medium` / `high` / `xhigh` / `max` | [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) |
   | xAI Grok | `low` / `medium` / `high` / `xhigh` | [Reasoning](https://docs.x.ai/docs/guides/reasoning) |
   | Zhipu GLM | `none` / `high` / `max` | [Deep Thinking](https://docs.z.ai/guides/capabilities/thinking) |
@@ -81,7 +90,7 @@ The API key is written to the **DSH credential store** under `apiKeyEnv`; it is 
 | Field | Default | Description |
 | --- | --- | --- |
 | `baseURL` | `https://dc-ai.dabeecao.org` | Gateway base URL. Must be `https` unless `allowPrivateBaseURL` is set. |
-| `api` | `openai-responses` | `openai-responses` or `openai-completions`. |
+| `api` | `openai-responses` | `openai-responses`, `openai-completions`, `anthropic-messages`, or `google-generative-ai`. |
 | `displayName` | `DC AI` | Provider label in DSH. |
 | `apiKeyEnv` | `DC_AI_API_KEY` | Credential reference resolved per request. |
 | `syncOnStart` | `true` | Refresh the catalog on startup. |
@@ -93,6 +102,42 @@ The API key is written to the **DSH credential store** under `apiKeyEnv`; it is 
 | `allowPrivateBaseURL` | `false` | Permit a loopback/private gateway address. Toggle it in **Settings → DC AI API → Connection & API Key**. |
 
 `route` is fixed to `dc-ai`: the plugin owns that one route and removes the legacy `dc-ai-chat` / `dc-ai-responses` entries.
+
+---
+
+## Wire protocols
+
+All four protocols below reach the same gateway; the choice is which vendor's
+wire format this route speaks. Switching is a settings change with no restart.
+
+| Protocol | Client endpoint | Auth header | Thinking control |
+| --- | --- | --- | --- |
+| `openai-responses` | `<root>/responses` | `authorization: Bearer` | `reasoning.effort` |
+| `openai-completions` | `<root>/chat/completions` | `authorization: Bearer` | `reasoning_effort` |
+| `anthropic-messages` | `<root>/v1/messages` | `x-api-key` + `anthropic-version` | `thinking` budget, or adaptive effort |
+| `google-generative-ai` | `<root>/v1beta/models/<id>:streamGenerateContent` | `x-goog-api-key` | `thinkingConfig.thinkingLevel` |
+
+**The address you type is not the address a client receives.** Each SDK appends
+its own version segment, and they disagree: Anthropic's always adds `/v1`, so a
+`/v1` root would request `/v1/v1/messages`; Google's appends only
+`/models/<id>`, so `/v1beta` must be in the root. `resolveRouteBaseURL()` derives
+the right form from one configured address, which is why switching protocol
+never needs the address edited, and why the derivation is idempotent — an
+address already carrying the right prefix stays as written.
+
+**Ladders are rewritten for the protocol, not the other way round.** The model's
+capability is a vendor fact; the wire format decides how to spell it. Gemini's
+API accepts only `minimal`/`low`/`medium`/`high` and pi-ai throws at request
+time on anything else, so on that protocol `xhigh` and `max` collapse onto
+`high` — the nearest level the endpoint will accept — rather than being
+advertised and then failing. Every other protocol gets the vendor spelling
+verbatim.
+
+**Compat switches are filtered per protocol.** `llm-pi-ai` refuses a per-model
+`compat` field its protocol does not declare, so a block preserved from a
+previous protocol (say `chatTemplateKwargs` from Completions) is dropped on
+switch instead of failing the settings write. `google-generative-ai` takes no
+compat at all, and its profile therefore carries none.
 
 ---
 
@@ -117,21 +162,39 @@ Report a vulnerability through the repository's issues, or privately to the main
 
 ---
 
-## Gemini and the `max` level
+## Gemini, `xhigh`, and the `max` level
 
-Google's API has no `max` thinking tier. Its [thinking guide](https://ai.google.dev/gemini-api/docs/thinking) publishes a per-model table:
+Google's API has no `max` thinking tier. Its [thinking guide](https://ai.google.dev/gemini-api/docs/thinking) publishes a per-model table, and `xhigh` is the one level that varies within a family:
 
 | Model | Levels supported |
 | --- | --- |
+| `gemini-4-hydrogen` | `low`, `medium`, `high`, **`xhigh`** |
 | `gemini-4-argon` | `low`, `medium`, `high` |
+| `gemini-4-carbon` | `low`, `medium`, `high` |
 | `gemini-3.8-flash` | `low`, `medium`, `high` |
 | `gemini-3.5-flash-lite` | `minimal`, `low`, `medium`, `high` |
 | `gemini-3.6-flash` | `minimal`, `low`, `medium`, `high` |
 | `gemini-3-pro-preview` | `low`, `high` |
 
+Only **hydrogen** has `xhigh`; argon and carbon reject it. The gateway reports an
+unsupported `thinkingLevel` as `502 — all upstream providers failed`, which looks
+like an outage rather than a bad request, so offering the level on the wrong
+model would present a working model as broken. That is why the per-model table
+exists rather than one Gemini-wide ladder.
+
 Gemini 2.x used a numeric `thinkingBudget`; Gemini 3.x uses `thinkingLevel`, and `thinking_level: "max"` is not part of the API. Earlier versions of this plugin offered `max` for Gemini because the gateway happened to accept the spelling on its Chat Completions route — that was a gateway quirk, not a Gemini level, and it has been removed: the ladder now stops at `high`, with `minimal` where Google documents it.
 
 The same reasoning applies to the rest of the ladder: `xhigh` is offered for OpenAI, Claude and Grok because those vendors document it, and not for DeepSeek or GLM, which map it onto a level they already have.
+
+**`xhigh` on hydrogen depends on the protocol, and that is deliberate.** The three
+OpenAI/Anthropic wires carry effort as a request field (`reasoning_effort`,
+`reasoning.effort`, `output_config.effort`) and the gateway forwards `xhigh` to
+hydrogen — measured: `xhigh` produced 226 thinking tokens where `high` produced
+none on `/v1/responses`. Google's own wire format has only four spellings, and
+pi-ai throws on anything else, so the level is dropped from hydrogen's ladder
+there rather than relabelled — the UI offers exactly the levels the selected
+protocol can send. Want `xhigh` on hydrogen? Use `openai-responses`,
+`openai-completions`, or `anthropic-messages`.
 
 ## Development
 
@@ -142,6 +205,16 @@ npm run snapshot  # regenerate lib/snapshot.json (needs DC_AI_API_KEY)
 ```
 
 `lib/catalog.js` is pure apart from its fetchers, so the snapshot generator and the running plugin share one mapping. `test/plugin.test.mjs` drives `apply()` with a stub Cordis context, so route behaviour is covered without booting DSH.
+
+The protocol layer is unit-tested for the parts that are easy to get subtly
+wrong: the endpoint root each SDK expects (including idempotence, so a
+re-switch never stacks `/v1` or `/v1beta`), the auth header and listing shape
+each native endpoint answers, the Gemini ladder clamping, and the per-protocol
+compat filter. Live verification during development streamed one request
+through every protocol for Claude, Gemini, GPT, DeepSeek, GLM and Grok, at
+every level each ladder advertises; `deepseek` and `glm` are the models the
+gateway cannot translate onto the Gemini wire format, which is a gateway
+limitation rather than a plugin one.
 
 ---
 

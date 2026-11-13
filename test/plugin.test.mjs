@@ -10,18 +10,25 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
 import {
+  adaptReasoningEfforts,
   buildProfile,
+  defaultCompat,
   detectThinking,
   detectVision,
   fetchEndpointModels,
   fetchModelsDev,
+  filterCompatForApi,
   isImageModel,
   isPrivateHost,
+  isSupportedApi,
   modelFamily,
+  normalizeApi,
   normalizeModelId,
   preserveCompat,
   resolveModels,
   resolveReasoningEfforts,
+  resolveRouteBaseURL,
+  SUPPORTED_APIS,
   validateBaseURL,
 } from '../lib/catalog.js'
 
@@ -89,6 +96,28 @@ test('Gemini uses the documented per-model levels and never offers max', () => {
     'medium',
     'high',
   ])
+})
+
+test('xhigh is offered for the one Gemini model that documents it', () => {
+  // Measured against the gateway (2026-11-13): hydrogen accepts
+  // thinkingLevel XHIGH, while its argon and carbon siblings answer 502 — an
+  // unsupported level, not an outage — and are graded accordingly.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ])
+  for (const sibling of ['gemini-4-argon', 'gemini-4-carbon']) {
+    assert.ok(
+      !Object.keys(resolveReasoningEfforts({ id: sibling, supports_thinking: true })).includes('xhigh'),
+      `${sibling} must not advertise xhigh`,
+    )
+  }
+  // Hydrogen still has no `minimal` and no `max`: the gateway rejects both.
+  const hydrogen = resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true })
+  assert.equal(hydrogen.minimal, undefined)
+  assert.equal(hydrogen.max, undefined)
 })
 
 test('every family ladder follows its vendor documentation', () => {
@@ -191,6 +220,204 @@ test('preserveCompat keeps human-tuned per-model switches', () => {
   const merged = preserveCompat(models, current)
   assert.deepEqual(merged[0].compat, { chatTemplateKwargs: { x: 1 } })
   assert.equal(merged[1].compat, undefined)
+})
+
+// ── Wire protocols ──────────────────────────────────────────────────────────
+
+test('every supported protocol is one pi-ai can build a route for', () => {
+  // These four names are the host's `supportedProtocols()` minus the protocols
+  // that need provider infrastructure this configuration shape cannot express
+  // (Bedrock SigV4, Vertex project, Azure api-version, Codex OAuth).
+  assert.deepEqual([...SUPPORTED_APIS], [
+    'openai-responses',
+    'openai-completions',
+    'anthropic-messages',
+    'google-generative-ai',
+  ])
+  assert.equal(normalizeApi('anthropic-messages'), 'anthropic-messages')
+  assert.equal(normalizeApi('google-generative-ai'), 'google-generative-ai')
+  // An unknown or absent value must fall back to the default, not pass through:
+  // a stale patch file naming a removed protocol would otherwise write a
+  // profile no adapter can construct.
+  assert.equal(normalizeApi('not-a-protocol'), 'openai-responses')
+  assert.equal(normalizeApi(undefined), 'openai-responses')
+  assert.equal(isSupportedApi('anthropic-messages'), true)
+  assert.equal(isSupportedApi('bedrock-converse-stream'), false)
+})
+
+test('resolveRouteBaseURL hands each client the root its SDK expects', () => {
+  const gateway = 'https://dc-ai.dabeecao.org'
+  // OpenAI clients append only their own path, so the root passes through and a
+  // `/v1` the user wrote is preserved.
+  assert.equal(resolveRouteBaseURL(gateway, 'openai-responses'), gateway)
+  assert.equal(resolveRouteBaseURL(gateway, 'openai-completions'), gateway)
+  assert.equal(resolveRouteBaseURL(`${gateway}/v1`, 'openai-completions'), `${gateway}/v1`)
+  // The Anthropic SDK always adds `/v1`, so a `/v1` root would become
+  // `/v1/v1/messages` — the version segment is stripped.
+  assert.equal(resolveRouteBaseURL(gateway, 'anthropic-messages'), gateway)
+  assert.equal(resolveRouteBaseURL(`${gateway}/v1`, 'anthropic-messages'), gateway)
+  // The Gemini client appends `/models/<id>` with the version disabled, so the
+  // version belongs in the root.
+  assert.equal(resolveRouteBaseURL(gateway, 'google-generative-ai'), `${gateway}/v1beta`)
+  assert.equal(resolveRouteBaseURL(`${gateway}/v1beta`, 'google-generative-ai'), `${gateway}/v1beta`)
+  // A trailing slash never doubles.
+  assert.equal(resolveRouteBaseURL(`${gateway}/`, 'google-generative-ai'), `${gateway}/v1beta`)
+  // Idempotent: persisting an already-resolved address must not stack prefixes.
+  for (const api of SUPPORTED_APIS) {
+    const once = resolveRouteBaseURL(gateway, api)
+    assert.equal(resolveRouteBaseURL(once, api), once, api)
+  }
+})
+
+test('Gemini ladders never advertise a level its wire format rejects', () => {
+  // pi-ai throws at request time on a Gemini level outside
+  // minimal/low/medium/high. A vendor level with no Google spelling is dropped
+  // when a neighbouring level already covers it, so the ladder reads exactly
+  // what the endpoint can do.
+  assert.deepEqual(
+    adaptReasoningEfforts({ low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }, 'google-generative-ai'),
+    { low: 'low', medium: 'medium', high: 'high' },
+  )
+  // Hydrogen's real ladder: xhigh is a genuine capability that the OpenAI and
+  // Anthropic wires send, and the Google wire cannot. It is dropped, not
+  // relabelled, so the UI never offers a level the request would fail on.
+  assert.deepEqual(
+    adaptReasoningEfforts({ low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' }, 'google-generative-ai'),
+    { low: 'low', medium: 'medium', high: 'high' },
+  )
+  // Dropping must not depend on declaration order: `high` is the level whose
+  // name is the Google spelling, so it wins whichever comes first.
+  assert.deepEqual(
+    adaptReasoningEfforts({ xhigh: 'xhigh', low: 'low', medium: 'medium', high: 'high' }, 'google-generative-ai'),
+    { low: 'low', medium: 'medium', high: 'high' },
+  )
+  // When dropping would leave nothing, clamping beats losing reasoning: a
+  // bare `max` becomes the deepest level the endpoint accepts.
+  assert.deepEqual(adaptReasoningEfforts({ max: 'max' }, 'google-generative-ai'), { max: 'high' })
+  // A vendor "off" stays off: the Gemini client turns it into a zero budget.
+  assert.deepEqual(
+    adaptReasoningEfforts({ off: 'none', low: 'low', high: 'high', max: 'max' }, 'google-generative-ai'),
+    { off: null, low: 'low', high: 'high' },
+  )
+  // `minimal` survives because Gemini supports it.
+  assert.deepEqual(
+    adaptReasoningEfforts({ minimal: 'minimal', low: 'low' }, 'google-generative-ai'),
+    { minimal: 'minimal', low: 'low' },
+  )
+  // Every other protocol keeps the vendor spelling verbatim — including the
+  // xhigh that only the Google wire has to drop.
+  const ladder = { low: 'low', xhigh: 'xhigh', max: 'max' }
+  for (const api of ['openai-responses', 'openai-completions', 'anthropic-messages']) {
+    assert.equal(adaptReasoningEfforts(ladder, api), ladder, api)
+  }
+  // A non-reasoning model stays false through every protocol.
+  assert.equal(adaptReasoningEfforts(false, 'google-generative-ai'), false)
+})
+
+test('hydrogen keeps xhigh on every protocol that can send it', () => {
+  const models = [
+    {
+      id: 'gemini-4-hydrogen',
+      name: 'Gemini 4 Hydrogen',
+      contextWindow: 1048576,
+      input: ['text'],
+      reasoningEfforts: resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true }),
+    },
+  ]
+  const levelsFor = (api) =>
+    Object.keys(
+      buildProfile(models, { displayName: 'DC AI', api, baseURL: 'https://dc-ai.dabeecao.org' }).models[0]
+        .reasoningEfforts,
+    )
+  // The three wires that carry effort as a request field send it to hydrogen.
+  for (const api of ['openai-responses', 'openai-completions', 'anthropic-messages']) {
+    assert.deepEqual(levelsFor(api), ['low', 'medium', 'high', 'xhigh'], api)
+  }
+  // The Google wire has no spelling for it, so it is not offered there.
+  assert.deepEqual(levelsFor('google-generative-ai'), ['low', 'medium', 'high'])
+})
+
+test('compat is filtered per protocol, because the host refuses a foreign field', () => {
+  const mixed = {
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: true,
+    supportsCacheControlOnTools: true,
+    supportsStore: true,
+  }
+  // Completions takes the first three, not `supportsStore`… and it does take it.
+  assert.deepEqual(filterCompatForApi(mixed, 'openai-completions'), {
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: true,
+    supportsStore: true,
+  })
+  // Responses takes only the developer role from this set.
+  assert.deepEqual(filterCompatForApi(mixed, 'openai-responses'), { supportsDeveloperRole: true })
+  // Anthropic takes the cache switch, not the OpenAI ones.
+  assert.deepEqual(filterCompatForApi(mixed, 'anthropic-messages'), { supportsCacheControlOnTools: true })
+  // Gemini takes no compat at all — the profile must carry none, or the write
+  // fails validation.
+  assert.equal(filterCompatForApi(mixed, 'google-generative-ai'), undefined)
+  // An empty or absent block stays absent rather than becoming `{}`.
+  assert.equal(filterCompatForApi({}, 'openai-completions'), undefined)
+  assert.equal(filterCompatForApi(undefined, 'openai-completions'), undefined)
+})
+
+test('defaultCompat states a switch only where a default must be corrected', () => {
+  assert.deepEqual(defaultCompat('openai-completions'), {
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: true,
+    supportsUsageInStreaming: true,
+  })
+  assert.deepEqual(defaultCompat('openai-responses'), { supportsDeveloperRole: true })
+  // Anthropic and Gemini defaults are pi-ai's own; adding ours would pin
+  // behaviour the gateway does not require.
+  assert.deepEqual(defaultCompat('anthropic-messages'), {})
+  assert.deepEqual(defaultCompat('google-generative-ai'), {})
+})
+
+test('buildProfile writes each protocol its own endpoint and vocabulary', () => {
+  const models = [
+    { id: 'claude-opus-4-6', reasoningEfforts: { low: 'low', high: 'high', max: 'max' } },
+  ]
+  const base = { displayName: 'DC AI', baseURL: 'https://dc-ai.dabeecao.org', apiKeyEnv: 'K' }
+
+  const anthropic = buildProfile(models, { ...base, api: 'anthropic-messages', compat: { supportsDeveloperRole: true } })
+  assert.equal(anthropic.api, 'anthropic-messages')
+  assert.equal(anthropic.baseURL, 'https://dc-ai.dabeecao.org')
+  // The only field asked for was an OpenAI one; Anthropic refuses it, so the
+  // profile must carry no compat rather than a refused key.
+  assert.equal(anthropic.compat, undefined)
+  assert.deepEqual(anthropic.models[0].reasoningEfforts, { low: 'low', high: 'high', max: 'max' })
+
+  const gemini = buildProfile(models, { ...base, api: 'google-generative-ai' })
+  assert.equal(gemini.baseURL, 'https://dc-ai.dabeecao.org/v1beta')
+  assert.deepEqual(gemini.models[0].reasoningEfforts, { low: 'low', high: 'high' })
+
+  // An address the user already wrote with `/v1beta` stays a single prefix.
+  const preVersioned = buildProfile(models, { ...base, api: 'google-generative-ai', baseURL: 'https://dc-ai.dabeecao.org/v1beta' })
+  assert.equal(preVersioned.baseURL, 'https://dc-ai.dabeecao.org/v1beta')
+})
+
+test('switching protocol drops per-model switches the new protocol refuses', () => {
+  const current = {
+    models: [
+      // Written while the route spoke Chat Completions.
+      { id: 'a', compat: { chatTemplateKwargs: { x: 1 }, supportsReasoningEffort: true } },
+      { id: 'b', compat: { supportsDeveloperRole: true } },
+    ],
+  }
+  const fresh = [{ id: 'a' }, { id: 'b' }]
+
+  // Completions keeps both blocks.
+  const completions = preserveCompat(fresh, current, 'openai-completions')
+  assert.deepEqual(completions[0].compat, { chatTemplateKwargs: { x: 1 }, supportsReasoningEffort: true })
+  assert.deepEqual(completions[1].compat, { supportsDeveloperRole: true })
+
+  // Anthropic keeps neither: both fields belong to another protocol, and
+  // pi-ai refuses a model-level switch its protocol does not declare.
+  const anthropic = preserveCompat(fresh, current, 'anthropic-messages')
+  assert.equal(anthropic[0].compat, undefined)
+  assert.equal(anthropic[1].compat, undefined)
 })
 
 test('isPrivateHost covers loopback, RFC1918, link-local, and IPv6', () => {
@@ -335,6 +562,95 @@ test('fetchEndpointModels tries /v1/models before the bare path', async () => {
     })
     assert.deepEqual(models.map((m) => m.id), ['a', 'b'])
     assert.deepEqual(seen, ['/v1/models'])
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('fetchEndpointModels asks the Anthropic endpoint its own way', async () => {
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push({ url: req.url, key: req.headers['x-api-key'], bearer: req.headers.authorization, version: req.headers['anthropic-version'] })
+    res.writeHead(200, { 'content-type': 'application/json' })
+    // Anthropic's real listing shape.
+    res.end(JSON.stringify({ data: [{ id: 'claude-opus-4-6', type: 'model' }], has_more: false }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const models = await fetchEndpointModels(`http://127.0.0.1:${port}`, 'sk-ant', undefined, {
+      allowPrivate: true,
+      api: 'anthropic-messages',
+    })
+    assert.deepEqual(models.map((m) => m.id), ['claude-opus-4-6'])
+    assert.equal(seen.length, 1)
+    // `x-api-key` rather than a bearer token, plus the version header the
+    // endpoint requires; the gateway answers 401 to the wrong one.
+    assert.equal(seen[0].key, 'sk-ant')
+    assert.equal(seen[0].bearer, undefined)
+    assert.equal(seen[0].version, '2023-06-01')
+    assert.equal(seen[0].url, '/v1/models')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('fetchEndpointModels reads the Gemini listing, whose ids live in `name`', async () => {
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push({ url: req.url, key: req.headers['x-goog-api-key'], bearer: req.headers.authorization })
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        models: [
+          { name: 'models/gemini-4-argon', displayName: 'Gemini 4 Argon', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemini-3.5-flash-lite' },
+          // A record with neither field is dropped rather than published as
+          // `undefined`.
+          { displayName: 'broken' },
+        ],
+      }),
+    )
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const models = await fetchEndpointModels(`http://127.0.0.1:${port}`, 'AIza-key', undefined, {
+      allowPrivate: true,
+      api: 'google-generative-ai',
+    })
+    assert.deepEqual(models.map((m) => m.id), ['gemini-4-argon', 'gemini-3.5-flash-lite'])
+    assert.equal(seen.length, 1)
+    assert.equal(seen[0].url, '/v1beta/models')
+    assert.equal(seen[0].key, 'AIza-key')
+    assert.equal(seen[0].bearer, undefined)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('a base URL already carrying a version is not doubled', async () => {
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push(req.url)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end('{"data":[{"id":"a"}]}')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    // `/v1beta` belongs to Gemini; handing it through the OpenAI path must
+    // still resolve to a single prefix.
+    await fetchEndpointModels(`http://127.0.0.1:${port}/v1beta`, 'k', undefined, {
+      allowPrivate: true,
+      api: 'openai-completions',
+    })
+    await fetchEndpointModels(`http://127.0.0.1:${port}/v1`, 'k', undefined, {
+      allowPrivate: true,
+      api: 'anthropic-messages',
+    })
+    assert.deepEqual(seen, ['/v1/models', '/v1/models'])
+    assert.ok(seen.every((url) => !url.includes('/v1/v1') && !url.includes('/v1beta/v1')))
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }
@@ -727,6 +1043,73 @@ test('the config route persists both switches and reports them back', async () =
   assert.equal(saved.status, 200)
   assert.equal(payload.allowPrivateBaseURL, true)
   assert.equal(payload.useModelsDev, false)
+})
+
+test('the config route accepts every native protocol and refuses an unknown one', async () => {
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  for (const api of ['anthropic-messages', 'google-generative-ai', 'openai-completions']) {
+    const saved = await callRoute(routes.get('/dc-ai-api/config'), {
+      method: 'POST',
+      body: JSON.stringify({ api }),
+    })
+    assert.equal(saved.status, 200, api)
+    assert.equal(JSON.parse(saved.body).api, api, api)
+  }
+
+  // An unknown name must not be persisted as-is: the profile it produced could
+  // not be constructed, and the page would report a protocol it cannot show.
+  // The stored protocol (the last accepted one above) must survive untouched.
+  const saved = await callRoute(routes.get('/dc-ai-api/config'), {
+    method: 'POST',
+    body: JSON.stringify({ api: 'bedrock-converse-stream' }),
+  })
+  assert.equal(saved.status, 200)
+  assert.equal(
+    JSON.parse(saved.body).api,
+    'openai-completions',
+    'an unsupported name leaves the stored protocol untouched',
+  )
+})
+
+test('the state route advertises the protocol list the page renders', async () => {
+  const { ctx, routes } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+  const payload = JSON.parse((await callRoute(routes.get('/dc-ai-api/state'))).body)
+  assert.deepEqual(payload.apis, ['openai-responses', 'openai-completions', 'anthropic-messages', 'google-generative-ai'])
+})
+
+test('the test route probes the protocol it is asked about', async () => {
+  const seen = []
+  const server = createServer((req, res) => {
+    seen.push({ url: req.url, key: req.headers['x-goog-api-key'] })
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ models: [{ name: 'models/gemini-4-argon' }] }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const { ctx, routes } = stubContext()
+    const { apply } = await import('../lib/index.js')
+    apply(ctx, { baseURL: `http://127.0.0.1:${port}`, allowPrivateBaseURL: true })
+
+    const response = await callRoute(routes.get('/dc-ai-api/test'), {
+      method: 'POST',
+      body: JSON.stringify({ api: 'google-generative-ai' }),
+    })
+    const payload = JSON.parse(response.body)
+    assert.equal(payload.ok, true)
+    assert.equal(payload.api, 'google-generative-ai')
+    // The Gemini path, with the Gemini header, and ids read out of `name`.
+    assert.deepEqual(seen, [{ url: '/v1beta/models', key: 'dc_test' }])
+    assert.deepEqual(payload.models, ['gemini-4-argon'])
+    assert.equal(payload.endpoint, `http://127.0.0.1:${port}/v1beta`)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('turning on private access lets a LAN gateway through, and only then', () => {

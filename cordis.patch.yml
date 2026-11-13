@@ -1,6 +1,14 @@
 # The DC AI API bundle inserts one Host plugin row. The plugin itself keeps the
 # `dc-ai` provider profile (endpoint, key reference, model catalog) in the
 # `llm-pi-ai` settings section, refreshed from the gateway.
+#
+# `api` picks the wire protocol the gateway is spoken to with. All four are
+# served by the same host:
+#   openai-responses      <root>/responses               (default)
+#   openai-completions    <root>/chat/completions
+#   anthropic-messages    <root>/v1/messages
+#   google-generative-ai  <root>/v1beta/models/<id>:…
+# Change it here for a headless install, or on Settings → DC AI API.
 - insert:
     - id: dc-ai-api
       name: dsh-dc-ai-api
