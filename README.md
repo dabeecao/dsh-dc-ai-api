@@ -20,7 +20,7 @@ Integrates the **DC AI Gateway** (`https://dc-ai.dabeecao.org`) into DeepSeek Ha
   | `anthropic-messages` | `/v1/messages` | `x-api-key` | Native thinking blocks, `tool_use`, prompt caching. |
   | `google-generative-ai` | `/v1beta/models/<id>:…` | `x-goog-api-key` | Native roles, `functionCall` parts, `thinkingConfig`. |
 
-  The protocol changes three things beyond the path, and each is derived rather than asked for: the endpoint root (each SDK appends its own version segment), the auth header, and the thinking vocabulary (Gemini accepts only `minimal`/`low`/`medium`/`high`, so `xhigh`/`max` collapse onto `high` there instead of failing mid-request). Compat switches a protocol does not declare are dropped on switch, because `llm-pi-ai` refuses a per-model field its protocol does not take — switching would otherwise be a failed settings write rather than a working route.
+  The protocol changes four things beyond the path, and each is derived rather than asked for: the endpoint root (each SDK appends its own version segment), the auth header, the model-listing shape, and the thinking vocabulary. Gemini accepts only `minimal`/`low`/`medium`/`high`, so a vendor level with no Google spelling is dropped from that protocol's ladder rather than advertised and then thrown on at request time. Compat switches a protocol does not declare are dropped on switch, because `llm-pi-ai` refuses a per-model field its protocol does not take — switching would otherwise be a failed settings write rather than a working route.
 - **Per-family reasoning ladder**, taken from each vendor's own API reference — not from probing the gateway:
 
   | Family | Levels | Source |
@@ -128,10 +128,13 @@ address already carrying the right prefix stays as written.
 **Ladders are rewritten for the protocol, not the other way round.** The model's
 capability is a vendor fact; the wire format decides how to spell it. Gemini's
 API accepts only `minimal`/`low`/`medium`/`high` and pi-ai throws at request
-time on anything else, so on that protocol `xhigh` and `max` collapse onto
-`high` — the nearest level the endpoint will accept — rather than being
-advertised and then failing. Every other protocol gets the vendor spelling
-verbatim.
+time on anything else, so a vendor level the endpoint has no spelling for is
+**dropped** from that protocol's ladder — not relabelled. `gemini-4-hydrogen`
+therefore offers four levels on the OpenAI and Anthropic wires, where `xhigh` is
+sent as `effort`/`reasoning_effort`, and three on `google-generative-ai`.
+Clamping to `high` remains only as a last resort, when dropping would leave a
+model with no reasoning at all (a ladder consisting of `max` alone). Every other
+protocol gets the vendor spelling verbatim.
 
 **Compat switches are filtered per protocol.** `llm-pi-ai` refuses a per-model
 `compat` field its protocol does not declare, so a block preserved from a
@@ -209,10 +212,11 @@ npm run snapshot  # regenerate lib/snapshot.json (needs DC_AI_API_KEY)
 The protocol layer is unit-tested for the parts that are easy to get subtly
 wrong: the endpoint root each SDK expects (including idempotence, so a
 re-switch never stacks `/v1` or `/v1beta`), the auth header and listing shape
-each native endpoint answers, the Gemini ladder clamping, and the per-protocol
-compat filter. Live verification during development streamed one request
-through every protocol for Claude, Gemini, GPT, DeepSeek, GLM and Grok, at
-every level each ladder advertises; `deepseek` and `glm` are the models the
+each native endpoint answers, the Gemini ladder's drop-versus-clamp rules
+(including that the outcome does not depend on declaration order), and the
+per-protocol compat filter. Live verification during development streamed one
+request through every protocol for Claude, Gemini, GPT, DeepSeek, GLM and Grok,
+at every level each ladder advertises; `deepseek` and `glm` are the models the
 gateway cannot translate onto the Gemini wire format, which is a gateway
 limitation rather than a plugin one.
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.2 — 2026-11-14
+
+### Fixed
+
+- **The docs described the pre-1.3.1 thinking-vocabulary rule.** Two places in
+  `README.md` and one in the 1.3.0 changelog entry still said Gemini's protocol
+  makes `xhigh` and `max` "collapse onto `high`". That was true of 1.3.0, which
+  relabelled an unsendable level; 1.3.1 changed the behaviour to *drop* it
+  whenever a neighbouring level already covers the same Google level, so the
+  picker offers exactly what the selected protocol can send. The prose now
+  matches the code, and the README spells out the remaining clamp case (a
+  ladder made only of `max`) and why the outcome is order-independent.
+
+  No behaviour changed in this release — only the description of it. Existing
+  profiles need no action.
+
+### Verified
+
+- `npm run check` unchanged at 53 passing tests; every Markdown table in
+  `README.md` checked for consistent column counts.
+
 ## 1.3.1 — 2026-11-13
 
 ### Fixed
@@ -73,8 +94,9 @@
   yield no usable ids at all.
   - **Thinking vocabulary.** Gemini accepts only
   `minimal`/`low`/`medium`/`high`, and pi-ai throws at request time on anything
-  else. On that protocol `xhigh` and `max` now collapse onto `high` — the
-  nearest accepted level — instead of being advertised and then failing.
+  else. A vendor level with no Google spelling is dropped from that protocol's
+  ladder rather than advertised and then failing; 1.3.1 refined this from
+  relabelling to dropping, and explained why below.
 
 - **Compat switches are filtered per protocol on write and on switch.** The
   host refuses a per-model `compat` field its protocol does not declare, so a

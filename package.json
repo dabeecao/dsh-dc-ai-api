@@ -1,6 +1,6 @@
 {
   "name": "dsh-dc-ai-api",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "DC AI API plugin for DeepSeek Harness: provides dc-ai.dabeecao.org models with automatic reasoning (thinking) ladder, vision detection, and real-time quota/usage dashboard.",
   "type": "module",
   "main": "./lib/index.js",
