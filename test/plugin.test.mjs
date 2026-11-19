@@ -74,7 +74,8 @@ test('modelFamily classifies the gateway ids', () => {
 })
 
 test('Gemini uses the documented per-model levels and never offers max', () => {
-  // Google's thinking guide lists low/medium/high for Gemini 4 and 3.8.
+  // Google's per-model table — aistudio.google.com/docs/thinking, "Levels
+  // Supported" — lists low/medium/high for gemini-4-argon and 3.8-flash.
   assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-4-argon', supports_thinking: true })), [
     'low',
     'medium',
@@ -85,10 +86,24 @@ test('Gemini uses the documented per-model levels and never offers max', () => {
     'medium',
     'high',
   ])
-  // The Flash-Lite line also documents `minimal`.
+  // The Flash / Flash-Lite lines document `minimal` too, including the two ids
+  // that used to be absent from the table and silently fell back to three.
+  for (const id of [
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-robotics-er-2-preview',
+  ]) {
+    assert.deepEqual(
+      Object.keys(resolveReasoningEfforts({ id, supports_thinking: true })),
+      ['minimal', 'low', 'medium', 'high'],
+      id,
+    )
+  }
+  // An image endpoint documents the narrower pair.
   assert.deepEqual(
-    Object.keys(resolveReasoningEfforts({ id: 'gemini-3.5-flash-lite', supports_thinking: true })),
-    ['minimal', 'low', 'medium', 'high'],
+    Object.keys(resolveReasoningEfforts({ id: 'gemini-3.1-flash-lite-image', supports_thinking: true })),
+    ['minimal', 'high'],
   )
   // An undocumented Gemini id falls back to the common three.
   assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-9-unknown', supports_thinking: true })), [
@@ -98,26 +113,70 @@ test('Gemini uses the documented per-model levels and never offers max', () => {
   ])
 })
 
-test('xhigh is offered for the one Gemini model that documents it', () => {
-  // Measured against the gateway (2026-11-13): hydrogen accepts
-  // thinkingLevel XHIGH, while its argon and carbon siblings answer 502 — an
-  // unsupported level, not an outage — and are graded accordingly.
-  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true })), [
-    'low',
-    'medium',
-    'high',
-    'xhigh',
-  ])
+test('xhigh is offered for the Gemini models that document it', () => {
+  // aistudio.google.com/docs/thinking states it in the table and in prose:
+  // `xhigh` is "supported on gemini-4-neon and gemini-4-hydrogen", and the
+  // other Gemini 4 siblings stop at `high`.
+  for (const id of ['gemini-4-hydrogen', 'gemini-4-neon']) {
+    assert.deepEqual(
+      Object.keys(resolveReasoningEfforts({ id, supports_thinking: true })),
+      ['low', 'medium', 'high', 'xhigh'],
+      id,
+    )
+  }
   for (const sibling of ['gemini-4-argon', 'gemini-4-carbon']) {
     assert.ok(
       !Object.keys(resolveReasoningEfforts({ id: sibling, supports_thinking: true })).includes('xhigh'),
       `${sibling} must not advertise xhigh`,
     )
   }
-  // Hydrogen still has no `minimal` and no `max`: the gateway rejects both.
-  const hydrogen = resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true })
-  assert.equal(hydrogen.minimal, undefined)
-  assert.equal(hydrogen.max, undefined)
+  // Neither model has `minimal` or `max`: the same page says `minimal` is not
+  // supported on Gemini 4, and no Gemini model has a `max` level.
+  for (const id of ['gemini-4-hydrogen', 'gemini-4-neon']) {
+    const ladder = resolveReasoningEfforts({ id, supports_thinking: true })
+    assert.equal(ladder.minimal, undefined, id)
+    assert.equal(ladder.max, undefined, id)
+  }
+})
+
+test('a model whose vendor page narrows the family ladder gets its own', () => {
+  // Anthropic: "Not every model that supports `max` supports `xhigh`." The
+  // effort table puts `xhigh` on Opus 4.7+ / Sonnet 5+ / Haiku 5.5, so the two
+  // 4.6 snapshots on this gateway keep `max` and lose `xhigh`.
+  for (const id of ['claude-opus-4-6', 'claude-sonnet-4-6']) {
+    assert.deepEqual(
+      resolveReasoningEfforts({ id, supports_thinking: true }),
+      { low: 'low', medium: 'medium', high: 'high', max: 'max' },
+      id,
+    )
+  }
+  // Their newer siblings really do have all five.
+  for (const id of ['claude-opus-5-5', 'claude-haiku-5-5']) {
+    assert.deepEqual(
+      Object.keys(resolveReasoningEfforts({ id, supports_thinking: true })),
+      ['low', 'medium', 'high', 'xhigh', 'max'],
+      id,
+    )
+  }
+  // xAI: `xhigh` is "available on grok-4.6 and later". On 4.5 the request is
+  // silently treated as `high`, so it is not offered there.
+  assert.deepEqual(Object.keys(resolveReasoningEfforts({ id: 'grok-4.5', supports_thinking: true })), [
+    'low',
+    'medium',
+    'high',
+  ])
+  for (const id of ['grok-4.6', 'grok-4.7']) {
+    assert.deepEqual(
+      Object.keys(resolveReasoningEfforts({ id, supports_thinking: true })),
+      ['low', 'medium', 'high', 'xhigh'],
+      id,
+    )
+  }
+  // An override is a value copy: mutating one result must not leak into the
+  // next resolution.
+  const first = resolveReasoningEfforts({ id: 'grok-4.5', supports_thinking: true })
+  first.bogus = 'bogus'
+  assert.equal(resolveReasoningEfforts({ id: 'grok-4.5', supports_thinking: true }).bogus, undefined)
 })
 
 test('every family ladder follows its vendor documentation', () => {
@@ -151,12 +210,16 @@ test('every family ladder follows its vendor documentation', () => {
     'xhigh',
   ])
 
-  // Zhipu: `none` / `high` / `max`; low and medium map onto high upstream.
-  assert.deepEqual(resolveReasoningEfforts({ id: 'glm-5.3-flash', supports_thinking: true }), {
-    off: 'none',
-    high: 'high',
-    max: 'max',
-  })
+  // Zhipu: exactly `max` / `high` / `low` on GLM-5.3 and GLM-5.3-FLASH — the
+  // page says "any other input will result in an error" — and thinking can no
+  // longer be disabled on them, so there is no `off` to offer.
+  for (const id of ['glm-5.3', 'glm-5.3-flash']) {
+    assert.deepEqual(
+      resolveReasoningEfforts({ id, supports_thinking: true }),
+      { low: 'low', high: 'high', max: 'max' },
+      id,
+    )
+  }
 
   // Qwen documents only a thinking toggle, so one level is offered.
   assert.deepEqual(resolveReasoningEfforts({ id: 'qwen3.8-flash', supports_thinking: true }), {
@@ -314,27 +377,31 @@ test('Gemini ladders never advertise a level its wire format rejects', () => {
   assert.equal(adaptReasoningEfforts(false, 'google-generative-ai'), false)
 })
 
-test('hydrogen keeps xhigh on every protocol that can send it', () => {
-  const models = [
-    {
-      id: 'gemini-4-hydrogen',
-      name: 'Gemini 4 Hydrogen',
-      contextWindow: 1048576,
-      input: ['text'],
-      reasoningEfforts: resolveReasoningEfforts({ id: 'gemini-4-hydrogen', supports_thinking: true }),
-    },
-  ]
+test('hydrogen and neon both keep xhigh on every protocol that can send it', () => {
+  const ids = ['gemini-4-hydrogen', 'gemini-4-neon']
+  const models = ids.map((id) => ({
+    id,
+    name: id,
+    contextWindow: 1048576,
+    input: ['text'],
+    reasoningEfforts: resolveReasoningEfforts({ id, supports_thinking: true }),
+  }))
   const levelsFor = (api) =>
-    Object.keys(
-      buildProfile(models, { displayName: 'DC AI', api, baseURL: 'https://dc-ai.dabeecao.org' }).models[0]
-        .reasoningEfforts,
+    buildProfile(models, { displayName: 'DC AI', api, baseURL: 'https://dc-ai.dabeecao.org' }).models.map((model) =>
+      Object.keys(model.reasoningEfforts),
     )
-  // The three wires that carry effort as a request field send it to hydrogen.
+  // The three wires that carry effort as a request field send it to both.
   for (const api of ['openai-responses', 'openai-completions', 'anthropic-messages']) {
-    assert.deepEqual(levelsFor(api), ['low', 'medium', 'high', 'xhigh'], api)
+    assert.deepEqual(levelsFor(api), [
+      ['low', 'medium', 'high', 'xhigh'],
+      ['low', 'medium', 'high', 'xhigh'],
+    ], api)
   }
   // The Google wire has no spelling for it, so it is not offered there.
-  assert.deepEqual(levelsFor('google-generative-ai'), ['low', 'medium', 'high'])
+  assert.deepEqual(levelsFor('google-generative-ai'), [
+    ['low', 'medium', 'high'],
+    ['low', 'medium', 'high'],
+  ])
 })
 
 test('compat is filtered per protocol, because the host refuses a foreign field', () => {

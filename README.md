@@ -27,14 +27,22 @@ Integrates the **DC AI Gateway** (`https://dc-ai.dabeecao.org`) into DeepSeek Ha
   | --- | --- | --- |
   | DeepSeek | `none` / `low` / `high` / `max` | [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion) |
   | OpenAI (GPT, o-series) | `low` / `medium` / `high` / `xhigh` / `max` | [Reasoning guide](https://platform.openai.com/docs/guides/reasoning) |
-  | Google Gemini | per model: `low` / `medium` / `high`, plus `minimal` on Flash and Flash-Lite, plus `xhigh` on Hydrogen only | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
-  | Anthropic Claude | `low` / `medium` / `high` / `xhigh` / `max` | [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) |
-  | xAI Grok | `low` / `medium` / `high` / `xhigh` | [Reasoning](https://docs.x.ai/docs/guides/reasoning) |
-  | Zhipu GLM | `none` / `high` / `max` | [Deep Thinking](https://docs.z.ai/guides/capabilities/thinking) |
+  | Google Gemini | per model: `low` / `medium` / `high`, plus `minimal` on Flash and Flash-Lite, plus `xhigh` on Neon and Hydrogen | [Gemini thinking](https://aistudio.google.com/docs/thinking) |
+  | Anthropic Claude | `low` / `medium` / `high` / `xhigh` / `max`, with `xhigh` only from Opus 4.7 / Sonnet 5 / Haiku 5.5 onward | [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) |
+  | xAI Grok | `low` / `medium` / `high` / `xhigh`, where `xhigh` needs 4.6+ | [Reasoning](https://docs.x.ai/developers/model-capabilities/text/reasoning) |
+  | Zhipu GLM | `low` / `high` / `max` | [Deep Thinking](https://docs.z.ai/guides/capabilities/thinking) |
   | Qwen and unrecognised models | a single thinking level (the vendor documents a toggle, not an effort scale) | Alibaba Model Studio |
   | Non-reasoning models | `reasoningEfforts: false` | — |
 
   A level appears only when the vendor documents it. `off` appears only where the vendor has a spelling that actually disables thinking (`none`); elsewhere the ladder starts at the vendor's lowest real level, because an `off` that merely omits the field would fall back to the vendor's default (thinking on) and misreport what the request does.
+
+  A family row is that vendor's current-generation set, not a promise for every model. Where a vendor's own page narrows or widens it, the model gets its own ladder — the same rule that gives Gemini its per-model table:
+
+  | Model | Ladder | Why |
+  | --- | --- | --- |
+  | `claude-opus-4-6`, `claude-sonnet-4-6` | `low` / `medium` / `high` / `max` | Anthropic: "Not every model that supports `max` supports `xhigh`" — 4.6 has `max`, not `xhigh`. |
+  | `glm-5.3`, `glm-5.3-flash` | `low` / `high` / `max` | Z.AI documents exactly these three and says anything else errors; these models also no longer allow thinking to be turned off. |
+  | `grok-4.5` | `low` / `medium` / `high` | `xhigh` arrived in 4.6; xAI silently downgrades it to `high` on 4.5. |
 
 - **Vision detection** from models.dev modalities, falling back to the gateway's own description; standalone image endpoints are filtered out of the chat catalog.
 - **Quota dashboard**: current window and daily quota with live countdowns, spendable balance, and recent-window cost history. Missing values render as `—` instead of a fabricated default.
@@ -130,8 +138,9 @@ capability is a vendor fact; the wire format decides how to spell it. Gemini's
 API accepts only `minimal`/`low`/`medium`/`high` and pi-ai throws at request
 time on anything else, so a vendor level the endpoint has no spelling for is
 **dropped** from that protocol's ladder — not relabelled. `gemini-4-hydrogen`
-therefore offers four levels on the OpenAI and Anthropic wires, where `xhigh` is
-sent as `effort`/`reasoning_effort`, and three on `google-generative-ai`.
+and `gemini-4-neon` therefore offer four levels on the OpenAI and Anthropic
+wires, where `xhigh` is sent as `effort`/`reasoning_effort`, and three on
+`google-generative-ai`.
 Clamping to `high` remains only as a last resort, when dropping would leave a
 model with no reasoning at all (a ladder consisting of `max` alone). Every other
 protocol gets the vendor spelling verbatim.
@@ -167,37 +176,42 @@ Report a vulnerability through the repository's issues, or privately to the main
 
 ## Gemini, `xhigh`, and the `max` level
 
-Google's API has no `max` thinking tier. Its [thinking guide](https://ai.google.dev/gemini-api/docs/thinking) publishes a per-model table, and `xhigh` is the one level that varies within a family:
+Google's API has no `max` thinking tier. Its [thinking guide](https://aistudio.google.com/docs/thinking) publishes a per-model table, and `xhigh` is the one level that varies within a family:
 
-| Model | Levels supported |
-| --- | --- |
-| `gemini-4-hydrogen` | `low`, `medium`, `high`, **`xhigh`** |
-| `gemini-4-argon` | `low`, `medium`, `high` |
-| `gemini-4-carbon` | `low`, `medium`, `high` |
-| `gemini-3.8-flash` | `low`, `medium`, `high` |
-| `gemini-3.5-flash-lite` | `minimal`, `low`, `medium`, `high` |
-| `gemini-3.6-flash` | `minimal`, `low`, `medium`, `high` |
-| `gemini-3-pro-preview` | `low`, `high` |
+| Model | Default | Levels supported |
+| --- | --- | --- |
+| `gemini-4-neon` | `high` | `low`, `medium`, `high`, **`xhigh`** |
+| `gemini-4-hydrogen` | `high` | `low`, `medium`, `high`, **`xhigh`** |
+| `gemini-4-argon` | `medium` | `low`, `medium`, `high` |
+| `gemini-4-carbon` | `medium` | `low`, `medium`, `high` |
+| `gemini-3.8-flash` | `medium` | `low`, `medium`, `high` |
+| `gemini-3.6-flash` | `medium` | `minimal`, `low`, `medium`, `high` |
+| `gemini-3.5-flash-lite` | `minimal` | `minimal`, `low`, `medium`, `high` |
+| `gemini-3-pro-preview` | `high` | `low`, `high` |
 
-Only **hydrogen** has `xhigh`; argon and carbon reject it. The gateway reports an
-unsupported `thinkingLevel` as `502 — all upstream providers failed`, which looks
-like an outage rather than a bad request, so offering the level on the wrong
-model would present a working model as broken. That is why the per-model table
-exists rather than one Gemini-wide ladder.
+Only **neon** and **hydrogen** have `xhigh`; argon and carbon stop at `high`. The
+guide says so twice — in the table above and in its prose: `xhigh` is "supported
+on `gemini-4-neon` and `gemini-4-hydrogen`", while `minimal` is "not supported on
+Gemini 4 models or `gemini-3.8-flash`". Offering a level a model does not take is
+not cosmetic: the request fails, and a gateway can surface that as
+`502 — all upstream providers failed`, which reads like an outage rather than a
+bad parameter — a working model presented as a broken one. That is why the
+per-model table exists rather than one Gemini-wide ladder.
 
 Gemini 2.x used a numeric `thinkingBudget`; Gemini 3.x uses `thinkingLevel`, and `thinking_level: "max"` is not part of the API. Earlier versions of this plugin offered `max` for Gemini because the gateway happened to accept the spelling on its Chat Completions route — that was a gateway quirk, not a Gemini level, and it has been removed: the ladder now stops at `high`, with `minimal` where Google documents it.
 
 The same reasoning applies to the rest of the ladder: `xhigh` is offered for OpenAI, Claude and Grok because those vendors document it, and not for DeepSeek or GLM, which map it onto a level they already have.
 
-**`xhigh` on hydrogen depends on the protocol, and that is deliberate.** The three
-OpenAI/Anthropic wires carry effort as a request field (`reasoning_effort`,
-`reasoning.effort`, `output_config.effort`) and the gateway forwards `xhigh` to
-hydrogen — measured: `xhigh` produced 226 thinking tokens where `high` produced
-none on `/v1/responses`. Google's own wire format has only four spellings, and
-pi-ai throws on anything else, so the level is dropped from hydrogen's ladder
-there rather than relabelled — the UI offers exactly the levels the selected
-protocol can send. Want `xhigh` on hydrogen? Use `openai-responses`,
-`openai-completions`, or `anthropic-messages`.
+**`xhigh` on neon and hydrogen depends on the protocol, and that is deliberate.**
+Capability is a vendor fact — the guide documents four levels for these two
+models — while the wire format only decides how to spell it. The three
+OpenAI/Anthropic wires carry effort as an ordinary request field
+(`reasoning_effort`, `reasoning.effort`, `output_config.effort`), so they keep
+all four levels verbatim. Google's own wire format has only four spellings and
+pi-ai throws on anything else, so the level is dropped from their ladders there
+rather than relabelled — the UI offers exactly the levels the selected protocol
+can send. Want `xhigh`? Use `openai-responses`, `openai-completions`, or
+`anthropic-messages`.
 
 ## Development
 

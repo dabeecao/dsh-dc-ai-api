@@ -1,5 +1,92 @@
 # Changelog
 
+## 1.3.3 — 2026-11-19
+
+### Added
+
+- **`gemini-4-neon` now offers `xhigh`, like `gemini-4-hydrogen`.** The
+  per-model Gemini table listed neon nowhere, so the id fell back to the common
+  three levels and the deepest level the model supports could not be selected.
+  Neon is in the same Gemini 4 generation as hydrogen and documents the same
+  four levels.
+
+  Taken from Google's own reference rather than from the gateway —
+  <https://aistudio.google.com/docs/thinking>, "Controlling thinking" →
+  "Levels Supported":
+
+  | Model | Default thinking | Levels supported |
+  | --- | --- | --- |
+  | `gemini-4-neon` | On (`high`) | `low`, `medium`, `high`, **`xhigh`** |
+  | `gemini-4-hydrogen` | On (`high`) | `low`, `medium`, `high`, **`xhigh`** |
+  | `gemini-4-argon` | On (`medium`) | `low`, `medium`, `high` |
+  | `gemini-4-carbon` | On (`medium`) | `low`, `medium`, `high` |
+
+  The same page's prose says it outright: `xhigh` is "supported on
+  `gemini-4-neon` and `gemini-4-hydrogen`", and `minimal` "not supported on
+  Gemini 4 models or `gemini-3.8-flash`". So neon has exactly hydrogen's ladder
+  — four levels, no `minimal`, no `max` — and argon/carbon keep three.
+
+  As with hydrogen, `xhigh` is dropped from neon's ladder on
+  `google-generative-ai` (pi-ai and `@google/genai` have no spelling for it) and
+  kept on the OpenAI and Anthropic wires, where effort is a request field.
+
+- **Every Gemini row now matches that documented table.** Two documented models
+  were missing and silently fell back to `low`/`medium`/`high`:
+  `gemini-3.1-flash-lite` and `gemini-robotics-er-2-preview` both document
+  `minimal`, which the fallback hid. They are declared now, so a gateway that
+  serves either model gets the right ladder — with `minimal` where the docs put
+  it, and no `minimal` on Gemini 4 or `gemini-3.8-flash`, where the docs say it
+  is unsupported.
+
+- **The bundled offline snapshot carries `gemini-4-neon`** with its four-level
+  ladder, so the model is selectable — at the right depth — before the API key
+  is configured or while the gateway is unreachable. It also carries the
+  corrected Claude 4.6 and GLM-5.3 ladders below, so the offline catalog never
+  advertises a level the live one would not. The rest of the snapshot was left
+  as it was; it predates the gateway's current model set, and
+  `npm run snapshot` regenerates it whole.
+
+### Fixed
+
+- **GLM-5.3 offered an `off` that Z.AI rejects, and hid a `low` it supports.**
+  Z.AI's Deep Thinking page documents exactly `max`/`high`/`low` for GLM-5.3 and
+  GLM-5.3-FLASH — "any other input will result in an error" — and states those
+  two models "no longer support disabling thinking", so `thinking.type:
+  "disabled"` is itself an error. The old `none`/`high`/`max` ladder therefore
+  advertised a level that failed and omitted `low`, which works. Both gateway
+  GLM models now read `low`/`high`/`max`, and the GLM family default follows
+  them (GLM-5.2's wider vocabulary maps onto these anyway: `medium`→`high`,
+  `xhigh`→`max`).
+
+- **Claude Opus 4.6 and Sonnet 4.6 offered `xhigh`, which Anthropic does not
+  give them.** The effort page lists `xhigh` only for Opus 4.7 and later, Sonnet
+  5 and 5.5, and Haiku 5.5, and says outright: "Not every model that supports
+  `max` supports `xhigh`." The 4.6 per-model guidance lists medium/low/high/max
+  and no `xhigh`. Both now read `low`/`medium`/`high`/`max`; Haiku 5.5 keeps all
+  five, which its own guidance confirms.
+
+- **`grok-4.5` would have offered `xhigh`, which it silently ignores.** xAI:
+  "`xhigh` is available on `grok-4.6` and later. On models that do not support
+  it, such as `grok-4.5`, requests with `xhigh` are treated as `high`." Offering
+  it would report a depth the request never sends. Grok 4.6 and 4.7 keep four
+  levels.
+
+  These are the first entries in `MODEL_EFFORT_OVERRIDES`, a small exception
+  table next to `GEMINI_LEVELS`: a family row is a vendor's current-generation
+  vocabulary, and a model whose own page narrows it gets its own ladder.
+
+### Verified
+
+- Re-read every family's own reference rather than the gateway: DeepSeek
+  (`none`/`low`/`high`/`max`), OpenAI (model-dependent; GPT-6 rejects `none`,
+  GPT-6.1 Sol also rejects `minimal`), Gemini (per-model table), Anthropic (five
+  levels, `xhigh` gated), xAI (four levels, `xhigh` from 4.6), Z.AI (three
+  levels on 5.3), Alibaba (toggle only). All now match, and the README carries
+  both the family rows and the per-model exceptions.
+
+- `npm test` at 54 passing tests, including new assertions for the Claude 4.6
+  and Grok 4.5 ladders and for GLM's three levels with no `off`.
+
 ## 1.3.2 — 2026-11-14
 
 ### Fixed

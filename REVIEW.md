@@ -64,9 +64,10 @@ Kiểm chứng: `npm run check` (syntax + 18 test) và một harness HTTP thật
 ## Còn mở (không chặn release)
 
 - **`xhigh` trên giao thức `google-generative-ai` — chờ upstream, không phải việc
-  của plugin.** `gemini-4-hydrogen` là model Gemini 4 duy nhất gateway chấp nhận
-  `thinkingLevel: XHIGH` (đo 13/11/2026: argon và carbon trả 502). Trên ba giao
-  thức OpenAI/Anthropic thì `xhigh` đi được, nên ladder giữ mức đó; trên giao thức
+  của plugin.** Theo tài liệu Google (<https://aistudio.google.com/docs/thinking>,
+  bảng "Levels Supported"), `gemini-4-neon` và `gemini-4-hydrogen` là hai model
+  duy nhất có `xhigh`; argon và carbon dừng ở `high`. Trên ba giao thức
+  OpenAI/Anthropic thì `xhigh` đi được, nên ladder giữ mức đó; trên giao thức
   Google thì `adaptReasoningEfforts()` lọc bỏ vì hai tầng dưới đều chưa hỗ trợ:
   1. `@earendil-works/pi-ai@1.5.2` — `toGoogleThinkingLevel()` chỉ map
      `minimal/low/medium/high`, và `resolveGoogleThinkingLevel()` **throw**
@@ -80,8 +81,9 @@ Kiểm chứng: `npm run check` (syntax + 18 test) và một harness HTTP thật
   Kiểm chứng lại bằng cách gửi `thinkingLevel: XHIGH` qua pi-ai, không phải chỉ
   nhìn enum.
 
-  Ghi chú phụ: pi-ai cũng chưa có `gemini-4-hydrogen` trong `GOOGLE_MODELS`, nên
-  model này hiện chỉ chạy được vì plugin tự khai báo qua config `llm-pi-ai`.
+  Ghi chú phụ: pi-ai cũng chưa có `gemini-4-hydrogen`/`gemini-4-neon` trong
+  `GOOGLE_MODELS`, nên hai model này hiện chỉ chạy được vì plugin tự khai báo qua
+  config `llm-pi-ai`.
 
 - Chưa có CI (`.github/workflows`) — nên thêm `npm run check` + refresh snapshot định kỳ.
 - Chưa có `CHANGELOG.md` / `SECURITY.md`.
@@ -100,11 +102,11 @@ liệu chính thức, không dùng kết quả đo proxy nữa:
 | Hãng | Mức (theo docs) | Nguồn |
 | --- | --- | --- |
 | DeepSeek | `none` / `low` / `high` / `max` | api-docs.deepseek.com/api/create-chat-completion |
-| OpenAI | `low` / `medium` / `high` / `xhigh` / `max` | platform.openai.com/docs/guides/reasoning |
-| Gemini | theo từng model: `low`/`medium`/`high`, thêm `minimal` ở Flash & Flash-Lite | ai.google.dev/gemini-api/docs/thinking |
-| Claude | `low` / `medium` / `high` / `xhigh` / `max` | platform.claude.com/docs/en/build-with-claude/effort |
-| Grok | `low` / `medium` / `high` / `xhigh` (không tắt được) | docs.x.ai/docs/guides/reasoning |
-| GLM | `none` / `high` / `max` | docs.z.ai/guides/capabilities/thinking |
+| OpenAI | `low` / `medium` / `high` / `xhigh` / `max` (GPT-6 từ chối `none`) | platform.openai.com/docs/guides/reasoning |
+| Gemini | theo từng model: `low`/`medium`/`high`, thêm `minimal` ở Flash & Flash-Lite, thêm `xhigh` ở Neon & Hydrogen | aistudio.google.com/docs/thinking |
+| Claude | `low` / `medium` / `high` / `xhigh` / `max`, nhưng `xhigh` chỉ từ Opus 4.7 / Sonnet 5 / Haiku 5.5 | platform.claude.com/docs/en/build-with-claude/effort |
+| Grok | `low` / `medium` / `high` / `xhigh` (`xhigh` cần 4.6+; không tắt được) | docs.x.ai/developers/model-capabilities/text/reasoning |
+| GLM | `low` / `high` / `max` (GLM-5.3/5.3-FLASH; không tắt được) | docs.z.ai/guides/capabilities/thinking |
 | Qwen / khác | một mức duy nhất (chỉ có bật/tắt) | Alibaba Model Studio |
 
 Hai quy tắc rút ra:
@@ -112,9 +114,14 @@ Hai quy tắc rút ra:
 1. **`off` chỉ xuất hiện khi hãng có spelling tắt thật** (`none`). Ở các hãng
    không có, `off` chỉ là bỏ trống trường → rơi về mặc định của hãng (đang bật),
    tức là UI nói "tắt" nhưng request vẫn suy luận. Vì vậy Gemini, OpenAI, Claude,
-   Grok không còn `off`.
-2. **`minimal`/`xhigh` chỉ có ở nơi docs ghi**, và Gemini phải tra theo từng model
-   vì Google công bố bảng riêng (`gemini-3-pro-preview` chỉ có `low`/`high`).
+   Grok, GLM không còn `off`.
+2. **`minimal`/`xhigh` chỉ có ở nơi docs ghi**, và phải tra theo từng model vì
+   các hãng công bố bảng riêng (`gemini-3-pro-preview` chỉ có `low`/`high`;
+   `claude-opus-4-6` có `max` nhưng không có `xhigh`).
+3. **Một dòng "hãng" không phải lời hứa cho mọi model.** Bảng family là bộ của
+   thế hệ hiện tại; model nào docs thu hẹp/mở rộng thì khai báo riêng trong
+   `MODEL_EFFORT_OVERRIDES` (Claude 4.6, Grok 4.5) hoặc `GEMINI_LEVELS` (toàn bộ
+   Gemini).
 
 Test tương ứng: `test/plugin.test.mjs` → "every family ladder follows its vendor
 documentation" và "Gemini uses the documented per-model levels and never offers max".
