@@ -69,7 +69,23 @@ update check does not cover it: the plugin manager only offers `List versions`
 and `Update` for packages installed from a registry under their own name. Use
 **Settings → DC AI API → Connection & API Key → Check for updates**, which
 compares the running version with `package.json` on the default branch.
-Reinstall with the same `dsh plugin add github:...` command to apply an update.
+
+**Upgrading needs the release tag, not just the repository.** pnpm records the
+*commit* a git dependency resolved to, so re-running the plain `add github:…`
+command finds the specifier unchanged, reuses the lockfile entry, and silently
+installs the old commit again:
+
+```bash
+# does nothing when the lockfile already pins an older commit
+dsh plugin --profile web add github:dabeecao/dsh-dc-ai-api
+
+# this resolves the release you are updating to
+dsh plugin --profile web add github:dabeecao/dsh-dc-ai-api#v1.3.3
+```
+
+The same applies to every protocol and catalog change: a release that only
+alters the model ladders still needs a restart afterwards, because the ladder
+is computed by the plugin's code at sync time rather than read from settings.
 
 **Requirements**
 

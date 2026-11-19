@@ -87,6 +87,21 @@
 - `npm test` at 54 passing tests, including new assertions for the Claude 4.6
   and Grok 4.5 ladders and for GLM's three levels with no `off`.
 
+### Docs
+
+- **The upgrade command in the README did not upgrade anything.** It said to
+  re-run `dsh plugin --profile web add github:dabeecao/dsh-dc-ai-api`, but pnpm
+  records the *commit* a git dependency resolved to: the specifier is unchanged,
+  so it reuses the lockfile entry and reinstalls the old commit. Applying this
+  release to a profile that already had 1.3.2 reproduced exactly that — it
+  reported success and left 1.3.2 in place. The README now says to add the
+  release tag (`…#v1.3.3`), which changes the specifier and forces
+  re-resolution, and notes that a ladder-only release still needs a restart,
+  because the ladder comes from the plugin's code at sync time.
+
+  This section was written after the tag was cut, so the v1.3.3 tarball carries
+  the older wording; everything else in the release is unchanged.
+
 ## 1.3.2 — 2026-11-14
 
 ### Fixed
