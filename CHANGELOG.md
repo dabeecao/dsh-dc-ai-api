@@ -99,9 +99,6 @@
   re-resolution, and notes that a ladder-only release still needs a restart,
   because the ladder comes from the plugin's code at sync time.
 
-  This section was written after the tag was cut, so the v1.3.3 tarball carries
-  the older wording; everything else in the release is unchanged.
-
 ## 1.3.2 — 2026-11-14
 
 ### Fixed
