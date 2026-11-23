@@ -173,7 +173,7 @@ compat at all, and its profile therefore carries none.
 
 The six HTTP routes the page uses (`/dc-ai-api/state|billing|config|sync|test|update`) are **not public**:
 
-- every request passes `ctx.connection.requestRejection()`, the same Host/Origin fence and signed-session check that guards `/api` — an unauthenticated browser gets `401`, a cross-site origin gets `403`;
+- every request passes the Host's browser-trust fence — `ctx.connection.admit()` on DeepSeek Harness 0.2.3 and later, `ctx.connection.requestRejection()` before that — the same Host/Origin check and signed-session check that guards `/api`; an unauthenticated browser gets `401`, a cross-site origin gets `403`. The route scope injects **both** `connection` and `connection.authentication`, because `admit()` reads the latter internally and Cordis refuses that read without an inject; `admit()` is handed `ConnectionTrustRequest` facts (`{ headers, method, url, socket }`, with an absolute `url`), not the raw `IncomingMessage`. A fence that throws fails closed with a JSON `403` rather than letting an exception escape — an escaping exception is answered by the Host web server as a bodyless `400`;
 - no `Access-Control-Allow-Origin` header is emitted, and responses are `Cache-Control: no-store`;
 - `baseURL` is validated before any request: `http(s)` only, no embedded credentials, `https` for public hosts, and a loopback or private literal is refused unless `allowPrivateBaseURL` is enabled (the switch in **Connection & API Key**). The models.dev catalog URL is a fixed constant and never accepts a private address. Redirects are revalidated hop by hop;
 - the API key never leaves the Host: the page only learns whether a key is configured, and under which reference.

@@ -786,6 +786,7 @@ function stubContext(options = {}) {
   const routes = new Map()
   const effects = []
   const credentialWrites = []
+  const injectedServices = []
   let credentialStore
   const ctx = {
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -826,8 +827,23 @@ function stubContext(options = {}) {
         }
       }
       if (name === 'connection') {
+        if (options.legacyConnection === true) {
+          // DSH < 0.2.3: no `admit`, only `requestRejection` taking the raw req.
+          return {
+            requestRejection: (req) => {
+              if (options.rejection === undefined) return undefined
+              return options.rejection
+            },
+          }
+        }
         return {
-          admit: () => (options.rejection === undefined ? { peer: {} } : { rejection: options.rejection }),
+          admit: (request) => {
+            // Record what the fence was handed so a test can assert the shape:
+            // DSH 0.2.3 reads ConnectionTrustRequest facts, never the raw req.
+            if (options.admissions) options.admissions.push(request)
+            if (options.admitThrows === true) throw new Error('fence exploded')
+            return options.rejection === undefined ? { peer: {} } : { rejection: options.rejection }
+          },
         }
       }
       return undefined
@@ -837,11 +853,15 @@ function stubContext(options = {}) {
       effects.push(fn)
       return () => {}
     },
-    inject(_services, fn) {
+    inject(services, fn) {
+      // Record what the plugin asked to inject so a test can assert that
+      // `connection.authentication` is declared: `connection.admit()` reads it
+      // internally, and Cordis refuses that read without an inject.
+      if (Array.isArray(services)) injectedServices.push(...services)
       fn(ctx)
     },
   }
-  return { ctx, routes, credentialWrites }
+  return { ctx, routes, credentialWrites, injectedServices }
 }
 
 /**
@@ -855,6 +875,10 @@ async function callRoute(handler, request = {}) {
   const req = {
     method: request.method ?? 'GET',
     url: '/dc-ai-api/state',
+    // A real Node request always carries headers and a socket; the admission
+    // facts builder reads both.
+    headers: request.headers ?? { host: 'localhost' },
+    socket: {},
     on(event, fn) {
       listeners[event] = fn
       return req
@@ -911,6 +935,71 @@ test('plugin routes refuse a cross-site origin with 403', async () => {
   const response = await callRoute(routes.get('/dc-ai-api/state'))
   assert.equal(response.status, 403)
   assert.equal(response.headers['Access-Control-Allow-Origin'], undefined)
+})
+
+test('connection.authentication is injected, which admit() reads internally', async () => {
+  // `connection.admit()` delegates to `this.authentication.authenticate(...)`.
+  // Cordis resolves service members through an inject-checked proxy, so a
+  // context that injected only `connection` throws
+  // `cannot get property "connection.authentication" without inject` the
+  // moment `admit()` runs — which the Host web server reports as a bodyless
+  // 400. Declaring it is what makes the fence callable at all.
+  const { ctx, injectedServices } = stubContext()
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  assert.ok(injectedServices.includes('webServer'), 'webServer must be injected')
+  assert.ok(injectedServices.includes('connection'), 'connection must be injected')
+  assert.ok(
+    injectedServices.includes('connection.authentication'),
+    'connection.authentication must be injected: admit() reads it internally',
+  )
+})
+
+test('the fence is handed ConnectionTrustRequest facts, not the raw request', async () => {
+  // DSH 0.2.3's `admit()` reads `{ headers, method, url, socket }` and expects
+  // an ABSOLUTE url. Handing it the IncomingMessage (whose `.url` is a bare
+  // path) made every route answer a bodyless 400 on the Host.
+  const admissions = []
+  const { ctx, routes } = stubContext({ admissions })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  const response = await callRoute(routes.get('/dc-ai-api/state'))
+  assert.equal(response.status, 200)
+  assert.equal(admissions.length, 1)
+
+  const facts = admissions[0]
+  assert.equal(typeof facts.url, 'string')
+  assert.doesNotThrow(() => new URL(facts.url), 'url must be absolute')
+  assert.equal(facts.url, 'http://localhost/dc-ai-api/state')
+  assert.equal(facts.method, 'GET')
+  assert.equal(typeof facts.headers, 'object')
+})
+
+test('a throwing fence fails closed with JSON, never a bodyless 400', async () => {
+  // An exception escaping the route handler is answered by the Host web server
+  // as a bare 400 with no body and no content type; the settings page then
+  // shows a meaningless "HTTP 400". The fence must fail closed instead.
+  const { ctx, routes } = stubContext({ admitThrows: true })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+
+  for (const path of ['/dc-ai-api/state', '/dc-ai-api/billing']) {
+    const response = await callRoute(routes.get(path))
+    assert.equal(response.status, 403, path)
+    assert.equal(response.headers['Content-Type'], 'application/json; charset=utf-8', path)
+    assert.equal(JSON.parse(response.body).error, 'FORBIDDEN', path)
+  }
+})
+
+test('a pre-0.2.3 connection without admit still uses requestRejection', async () => {
+  const { ctx, routes } = stubContext({ legacyConnection: true, rejection: 401 })
+  const { apply } = await import('../lib/index.js')
+  apply(ctx, {})
+  const response = await callRoute(routes.get('/dc-ai-api/state'))
+  assert.equal(response.status, 401)
+  assert.equal(JSON.parse(response.body).error, 'UNAUTHORIZED')
 })
 
 test('an admitted request reaches the handler and rejects a bad baseURL', async () => {

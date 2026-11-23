@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.3.4 — 2026-11-24
+
+### Fixed
+
+- **Every settings route answered a bodyless `400` on DeepSeek Harness
+  0.2.3.** Saving a key, `Test`, `Sync`, the quota/billing dashboard and the
+  update check all failed with a bare `HTTP 400` and no explanation. The
+  gateway, the API key and the plugin's own config were never at fault.
+
+  `connection.admit()` delegates to `this.authentication.authenticate(...)`.
+  Cordis resolves service members through an inject-checked proxy, so calling
+  `admit()` from a context that injected only `connection` throws:
+
+  ```
+  cannot get property "connection.authentication" without inject
+  ```
+
+  The exception escaped the route handler, and the Host web server answers any
+  escaped handler exception with `res.writeHead(400); res.end()` — no body, no
+  content type. The page's `apiCall` only sees a non-JSON body, so it reports a
+  meaningless `HTTP 400`.
+
+  The route scope now injects `connection.authentication` alongside
+  `connection`, which is what makes the fence callable at all. The Host's own
+  authentication plugin declares both for the same reason.
+
+- **The fence is handed `ConnectionTrustRequest` facts, not the raw request.**
+  DSH 0.2.3's `admit` reads `{ headers, method, url, socket }` with an
+  **absolute** `url`. It is not an `IncomingMessage`, whose `.url` is a bare
+  path. The facts are now built the way the Host's own `webserver/authorize`
+  listener and `dsh-market`'s `admissionFacts()` build them, so these routes are
+  admitted exactly like a first-party route.
+
+- **A throwing fence can no longer produce that bodyless `400`.** The whole
+  admission step is guarded: an exception is logged and answered as a JSON
+  `403 FORBIDDEN` instead of escaping. A fence that throws has admitted
+  nothing, so failing closed is both the safe and the legible outcome — the
+  page shows a real reason rather than a meaningless status code. This guard is
+  what turned the inject bug above from an opaque `400` into a diagnosable
+  `403` during the fix.
+
+- **`requestRejection` is kept as the pre-0.2.3 fallback.** Older Hosts still
+  expose only that spelling, and it takes the raw request; the plugin picks
+  whichever entry point the running Connection service actually provides.
+
+### Verified
+
+- Reproduced against a running `0.2.3-alpha.2` Host with a valid signed session
+  cookie minted from the profile's own credential secret: all six routes
+  returned `400` with a 0-byte body and no `content-type`, while
+  `dsh-market`'s routes returned `200` under the same cookie — confirming the
+  fault was in this plugin's admission call, not in the Host's fence.
+- After the fix, against the same Host: `/state`, `/billing` and `/update`
+  answer `200` with JSON (`lastLive: true`, 26 models, `lastError: null`);
+  `POST /test` answers `200` with `{"ok":true,"modelsCount":33}`;
+  `POST /config` and `POST /sync` answer `200`; the POST-only routes answer
+  `405` to a `GET` as designed; and the fence still refuses an
+  unauthenticated request with `401` and a cross-site origin with `403`.
+
 ## 1.3.3 — 2026-11-19
 
 ### Added
